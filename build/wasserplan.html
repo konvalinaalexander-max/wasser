@@ -2278,6 +2278,12 @@ const Admin = {
        Klärfälle. Sie stehen in der Liste hinten, dürfen aber nicht
        verschwinden — sonst fällt genau das nicht auf, was auffallen muss. */
     const rueck=heute.auftraege.filter(a=>a.rueckstand).length;
+    /* Wenn fast alles Klärfall ist, sind das nicht viele einzelne Datenprobleme,
+       sondern ein veraltetes Journal. Diese Unterscheidung entscheidet darüber,
+       ob der Leiter zehn Flächen prüft oder einmal nachträgt. */
+    const letzterEintrag=Store.db.journal.map(j=>j.datum).filter(Boolean).sort().pop()||null;
+    const journalAlterTage=letzterEintrag?D.diff(letzterEintrag, D.today()):null;
+    const flaechendeckend = heute.auftraege.length>=4 && rueck/heute.auftraege.length>=0.7;
     const woGrenze=D.add(D.today(),-6);
     let m3Woche=0;
     Store.db.journal.forEach(j=>{ if(j.datum>=woGrenze && j.m3) m3Woche+=j.m3; });
@@ -2296,6 +2302,29 @@ const Admin = {
       <div class="stt"><b>${Math.round(m3Woche)} m³</b><span>Wasser · 7 Tage</span></div>
       <div class="stt"><b>${regenWoche?Math.round(regenWoche*10)/10+' mm':'–'}</b><span>Regen · 7 Tage</span></div>`;
     p.appendChild(statr);
+
+    if(flaechendeckend && journalAlterTage>7){
+      const w=el('div','warnbox');
+      w.innerHTML=`<b>${rueck} von ${heute.auftraege.length} Aufträgen sind Klärfälle</b> —
+        das ist kein Flächenproblem, sondern eines im Journal. Der letzte Eintrag ist vom
+        ${esc(D.nice(letzterEintrag))}, also ${journalAlterTage} Tage alt. Solange nichts
+        nachgetragen wird, rechnet die App weiter Defizit auf und hält fast jeden Sektor für
+        stark überfällig.
+        <span class="tiny dim">Der Plan arbeitet den Rückstand kapazitätsgerecht ab und
+        versteckt ihn nicht. Sobald die letzten Gänge erfasst sind, verschwinden diese
+        Markierungen von selbst. Bleiben sie danach bei einzelnen Flächen stehen, sind es
+        dort echte Klärfälle — abgeräumte Kultur, zu enge Regel oder ein nicht erfasster
+        Gang.</span>`;
+      p.appendChild(w);
+    } else if(flaechendeckend){
+      const w=el('div','warnbox');
+      w.innerHTML=`<b>${rueck} von ${heute.auftraege.length} Aufträgen sind Klärfälle.</b>
+        Bei so vielen liegt die Ursache meist nicht auf den Flächen, sondern in den Regeln:
+        versprechen sie durchgängig mehr, als der Betrieb fährt, wächst überall dauerhaft
+        ein Defizit. <button class="btn sm ghost" style="margin-left:6px"
+        onclick="Admin.go('auswert')">Regel gegen Wirklichkeit ansehen</button>`;
+      p.appendChild(w);
+    }
 
     const maxOffset=(e.planungsHorizont||10)-1;
     const head=el('div','dayhead');
