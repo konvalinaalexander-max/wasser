@@ -1,0 +1,339 @@
+[
+ {
+  "feldJournal": "Abag",
+  "schiffe": [
+   "4",
+   "5"
+  ],
+  "haeufigkeit": 21
+ },
+ {
+  "feldJournal": "Schützenhaus",
+  "schiffe": [
+   "5",
+   "6"
+  ],
+  "haeufigkeit": 18
+ },
+ {
+  "feldJournal": "Bachofen (Fällanden)",
+  "schiffe": [
+   "6",
+   "7",
+   "8",
+   "9"
+  ],
+  "haeufigkeit": 17
+ },
+ {
+  "feldJournal": "Schützenhaus",
+  "schiffe": [
+   "6",
+   "7"
+  ],
+  "haeufigkeit": 17
+ },
+ {
+  "feldJournal": "Schützenhaus",
+  "schiffe": [
+   "1",
+   "2"
+  ],
+  "haeufigkeit": 16
+ },
+ {
+  "feldJournal": "Schützenhaus",
+  "schiffe": [
+   "7",
+   "8"
+  ],
+  "haeufigkeit": 15
+ },
+ {
+  "feldJournal": "Schützenhaus",
+  "schiffe": [
+   "4",
+   "5"
+  ],
+  "haeufigkeit": 15
+ },
+ {
+  "feldJournal": "Abag",
+  "schiffe": [
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 14
+ },
+ {
+  "feldJournal": "Schützenhaus",
+  "schiffe": [
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 13
+ },
+ {
+  "feldJournal": "Schützenhaus",
+  "schiffe": [
+   "3",
+   "4"
+  ],
+  "haeufigkeit": 13
+ },
+ {
+  "feldJournal": "Bühler unten",
+  "schiffe": [
+   "1",
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 12
+ },
+ {
+  "feldJournal": "Cherwis",
+  "schiffe": [
+   "9",
+   "10"
+  ],
+  "haeufigkeit": 11
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "1",
+   "2"
+  ],
+  "haeufigkeit": 10
+ },
+ {
+  "feldJournal": "Cherwis",
+  "schiffe": [
+   "11",
+   "12",
+   "13"
+  ],
+  "haeufigkeit": 10
+ },
+ {
+  "feldJournal": "Wolf",
+  "schiffe": [
+   "1",
+   "2",
+   "3",
+   "4"
+  ],
+  "haeufigkeit": 10
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "3",
+   "4"
+  ],
+  "haeufigkeit": 10
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 9
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "1",
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 9
+ },
+ {
+  "feldJournal": "Bühler unten",
+  "schiffe": [
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 9
+ },
+ {
+  "feldJournal": "Wolf",
+  "schiffe": [
+   "1",
+   "4"
+  ],
+  "haeufigkeit": 9
+ },
+ {
+  "feldJournal": "Abag",
+  "schiffe": [
+   "1",
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 8
+ },
+ {
+  "feldJournal": "Cherwis",
+  "schiffe": [
+   "13",
+   "14",
+   "15"
+  ],
+  "haeufigkeit": 8
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "2",
+   "3",
+   "4"
+  ],
+  "haeufigkeit": 7
+ },
+ {
+  "feldJournal": "Cherwis",
+  "schiffe": [
+   "4",
+   "5"
+  ],
+  "haeufigkeit": 6
+ },
+ {
+  "feldJournal": "Bachofen (Fällanden)",
+  "schiffe": [
+   "6",
+   "7"
+  ],
+  "haeufigkeit": 6
+ },
+ {
+  "feldJournal": "Eiägert",
+  "schiffe": [
+   "4",
+   "5"
+  ],
+  "haeufigkeit": 6
+ },
+ {
+  "feldJournal": "Bachofen (Fällanden)",
+  "schiffe": [
+   "8",
+   "9"
+  ],
+  "haeufigkeit": 6
+ },
+ {
+  "feldJournal": "Bachofen (Fällanden)",
+  "schiffe": [
+   "6",
+   "9"
+  ],
+  "haeufigkeit": 6
+ },
+ {
+  "feldJournal": "Förliwiesen Weber",
+  "schiffe": [
+   "2",
+   "3",
+   "4"
+  ],
+  "haeufigkeit": 6
+ },
+ {
+  "feldJournal": "Bachofen (Fällanden)",
+  "schiffe": [
+   "6",
+   "7",
+   "9"
+  ],
+  "haeufigkeit": 6
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "2",
+   "3",
+   "1"
+  ],
+  "haeufigkeit": 5
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "4",
+   "3"
+  ],
+  "haeufigkeit": 5
+ },
+ {
+  "feldJournal": "Cherwis",
+  "schiffe": [
+   "1",
+   "2"
+  ],
+  "haeufigkeit": 4
+ },
+ {
+  "feldJournal": "Cherwis",
+  "schiffe": [
+   "1",
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 4
+ },
+ {
+  "feldJournal": "Abag",
+  "schiffe": [
+   "3",
+   "4",
+   "5"
+  ],
+  "haeufigkeit": 4
+ },
+ {
+  "feldJournal": "Bachofen (Fällanden)",
+  "schiffe": [
+   "6",
+   "7",
+   "8"
+  ],
+  "haeufigkeit": 4
+ },
+ {
+  "feldJournal": "Förliwiesen Weber",
+  "schiffe": [
+   "1",
+   "2",
+   "3"
+  ],
+  "haeufigkeit": 4
+ },
+ {
+  "feldJournal": "Cherwis",
+  "schiffe": [
+   "12",
+   "13"
+  ],
+  "haeufigkeit": 3
+ },
+ {
+  "feldJournal": "Wolf",
+  "schiffe": [
+   "1",
+   "2"
+  ],
+  "haeufigkeit": 3
+ },
+ {
+  "feldJournal": "Förliwiesen Schopf",
+  "schiffe": [
+   "1",
+   "4"
+  ],
+  "haeufigkeit": 3
+ }
+]

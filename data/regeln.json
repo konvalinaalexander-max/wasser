@@ -1,0 +1,133 @@
+{
+ "s02-eichhof-areal__eichhof-1::k-karotten": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s02-eichhof-areal__eiagert::k-lauch": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s02-eichhof-areal__eiagert::k-randen": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s02-eichhof-areal__eiagert::k-kabis": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s02-eichhof-areal__eiagert::k-knollensellerie": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s27-abag-luchs-bonomo__bonomo::k-salat": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s02-eichhof-areal__eichhof-2::k-salat": {
+  "anzahl": 1,
+  "einheit": "tag",
+  "mm": 15,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s27-abag-luchs-bonomo__abag-luchs::k-schnittlauch": {
+  "anzahl": 1,
+  "einheit": "tag",
+  "mm": 15,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s04-schutzenhaus-muchel-hunziker__schutzenhaus::k-fenchel": {
+  "anzahl": 4,
+  "einheit": "woche",
+  "mm": 15,
+  "phasen": [],
+  "zeiten": [],
+  "notiz": "ursprünglich: jeden 2. Tag"
+ },
+ "s07-buhler-langacher-kagi__buhler-unten::k-salat": {
+  "anzahl": 1,
+  "einheit": "tag",
+  "mm": 10,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s08-forliwiesen__forliwiesen-schopf::k-fenchel": {
+  "anzahl": 4,
+  "einheit": "woche",
+  "mm": 15,
+  "phasen": [],
+  "zeiten": [],
+  "notiz": "ursprünglich: jeden 2. Tag"
+ },
+ "s29-cherwis__cherwis::k-karotten": {
+  "anzahl": 2,
+  "einheit": "tag",
+  "mm": 5,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s08-forliwiesen__forliwiesen-weber::k-salat": {
+  "anzahl": 4,
+  "einheit": "woche",
+  "mm": 15,
+  "phasen": [],
+  "zeiten": [],
+  "notiz": "ursprünglich: jeden 2. Tag"
+ },
+ "s03-bachofen__bachofen::k-fenchel": {
+  "anzahl": 4,
+  "einheit": "woche",
+  "mm": 15,
+  "phasen": [],
+  "zeiten": [],
+  "notiz": "ursprünglich: jeden 2. Tag"
+ },
+ "s29-cherwis__cherwis::k-salat": {
+  "anzahl": 1,
+  "einheit": "tag",
+  "mm": 15,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s29-cherwis__cherwis::k-fenchel": {
+  "anzahl": 1,
+  "einheit": "tag",
+  "mm": 10,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s09-winkler__winkler::k-salat": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": []
+ },
+ "s06-adlisberg-slowgrow__adlisberg-slowgrow::k-salat": {
+  "anzahl": 1,
+  "einheit": "woche",
+  "mm": 30,
+  "phasen": [],
+  "zeiten": [],
+  "notiz": "ursprünglich: alle 10 Tage 30 mm mit Rollomat – bitte prüfen"
+ }
+}

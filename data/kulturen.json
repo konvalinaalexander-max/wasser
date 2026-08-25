@@ -1,0 +1,86 @@
+[
+ {
+  "id": "k-erdbeeren",
+  "name": "Erdbeeren",
+  "icon": "🍓",
+  "farbe": "#B0334A"
+ },
+ {
+  "id": "k-fenchel",
+  "name": "Fenchel",
+  "icon": "🌿",
+  "farbe": "#7FA650"
+ },
+ {
+  "id": "k-kabis",
+  "name": "Kabis",
+  "icon": "🥦",
+  "farbe": "#5B8C6E"
+ },
+ {
+  "id": "k-karotten",
+  "name": "Karotten",
+  "icon": "🥕",
+  "farbe": "#D2691E"
+ },
+ {
+  "id": "k-kartoffel",
+  "name": "Kartoffel",
+  "icon": "🥔",
+  "farbe": "#A98357"
+ },
+ {
+  "id": "k-knollensellerie",
+  "name": "Knollensellerie",
+  "icon": "🌱",
+  "farbe": "#8A7B5C"
+ },
+ {
+  "id": "k-kurbis",
+  "name": "Kürbis",
+  "icon": "🎃",
+  "farbe": "#C87A1E"
+ },
+ {
+  "id": "k-lauch",
+  "name": "Lauch",
+  "icon": "🧄",
+  "farbe": "#3C7A4E"
+ },
+ {
+  "id": "k-mais",
+  "name": "Mais",
+  "icon": "🌽",
+  "farbe": "#C9A227"
+ },
+ {
+  "id": "k-mix",
+  "name": "Mix",
+  "icon": "🥗",
+  "farbe": "#6B7280"
+ },
+ {
+  "id": "k-randen",
+  "name": "Randen",
+  "icon": "🍠",
+  "farbe": "#8E2F4A"
+ },
+ {
+  "id": "k-salat",
+  "name": "Salat",
+  "icon": "🥬",
+  "farbe": "#4A7C2F"
+ },
+ {
+  "id": "k-schnittlauch",
+  "name": "Schnittlauch",
+  "icon": "🌱",
+  "farbe": "#2F7D5A"
+ },
+ {
+  "id": "k-zwiebel",
+  "name": "Zwiebel",
+  "icon": "🧅",
+  "farbe": "#B08D57"
+ }
+]

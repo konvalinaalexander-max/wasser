@@ -1,0 +1,69 @@
+<body>
+
+<!-- ============ START ============ -->
+<div id="start">
+  <div class="brandmark">
+    <svg width="52" height="52" viewBox="0 0 52 52" aria-hidden="true">
+      <rect x="2" y="2" width="48" height="48" rx="13" fill="#2F5D3A"/>
+      <path d="M26 12c5.5 6.4 8.6 11 8.6 15.2A8.6 8.6 0 0126 36a8.6 8.6 0 01-8.6-8.8C17.4 23 20.5 18.4 26 12z"
+            fill="#fff" opacity=".95"/>
+      <path d="M26 22.5v9M22.5 26.5L26 23l3.5 3.5" stroke="#2F5D3A" stroke-width="1.9" fill="none"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>Wasserplan</h1>
+      <p>Bewässerungsplanung für den Gemüsebaubetrieb — Offline-Testversion</p>
+    </div>
+  </div>
+  <div class="tiles">
+    <button class="tile" onclick="App.enter('admin')">
+      <div class="ic">🗂️</div>
+      <h3>Produktionsleiter</h3>
+      <p>Standorte und Kulturen verwalten, Regeln festlegen, Tagesplan prüfen und freigeben.</p>
+    </button>
+    <button class="tile wm" onclick="App.enter('wm')">
+      <div class="ic">💧</div>
+      <h3>Wassermann</h3>
+      <p>Heutige Aufträge ansehen und eintragen, was bewässert wurde.</p>
+    </button>
+  </div>
+  <div class="row tiny dim" style="gap:14px;flex-wrap:wrap;justify-content:center">
+    <span id="startStat"></span>
+    <button class="btn sm ghost" onclick="Store.importDialog()">Daten laden…</button>
+    <button class="btn sm ghost" onclick="Store.exportFile()">Daten sichern</button>
+  </div>
+</div>
+
+<!-- ============ ADMIN ============ -->
+<div id="adminShell" class="shell">
+  <div class="topbar">
+    <button class="x" onclick="App.home()" title="Zurück zur Auswahl">←</button>
+    <div style="flex:1;min-width:0">
+      <div class="tt">Produktionsleiter</div>
+      <div class="sub" id="admSub"></div>
+    </div>
+    <button class="btn sm" onclick="Store.exportFile()">Sichern</button>
+  </div>
+  <div class="tabs" id="admTabs"></div>
+  <div class="page" id="admPage"></div>
+</div>
+
+<!-- ============ WASSERMANN ============ -->
+<div id="wmShell" class="shell wm">
+  <div class="wmtop">
+    <button class="x" onclick="App.home()">←</button>
+    <div style="flex:1;min-width:0">
+      <div class="tt" id="wmTitle">Wassermann</div>
+      <div class="sub" id="wmSub"></div>
+    </div>
+    <button class="x" onclick="WM.menu()">⋯</button>
+  </div>
+  <div class="page" id="wmPage"></div>
+  <div id="wmSticky"></div>
+</div>
+
+<div class="mask" id="mask"><div class="modal" id="modal"></div></div>
+<div id="toast"></div>
+
+<script id="seedData" type="application/json">__DATA__</script>
+<script>
