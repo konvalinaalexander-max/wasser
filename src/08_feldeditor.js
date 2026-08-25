@@ -17,9 +17,12 @@ const FeldEditor = {
     this.render();
   },
   feld(){ return this.ctx?Store.feld(this.ctx.feldId):null; },
+  /* PlanView sauber abbauen, bevor ein neues entsteht (sonst bleiben ResizeObserver liegen) */
+  entsorgePV(){ if(this.pv && this.pv.destroy) this.pv.destroy(); this.pv=null; },
 
   render(){
     const c=this.ctx.container; c.innerHTML='';
+    this.entsorgePV();
     const f=this.feld(); if(!f){ c.innerHTML='<div class="empty"><h3>Kein Feld</h3></div>'; return; }
     const st=Store.standort(this.ctx.standortId);
 
@@ -31,7 +34,7 @@ const FeldEditor = {
       onPick:(s,f2,sek)=>{ this.schiffId=s.id; this.sektorId=sek?sek.id:null;
         if(this.reiter==='kultur') this.kulturKlick(s,f2,sek);
         else this.renderUnten(); },
-      onChange:()=>this.renderUnten(),
+      onChange:()=>{ Store.changed('geometrie'); this.renderUnten(); },
       onRohrFertig:(pts)=>this.rohrSpeichern(pts)});
     holder.appendChild(this.pv.node);
 
@@ -65,33 +68,47 @@ const FeldEditor = {
   renderUnten(){
     const u=document.getElementById('edUnten'); if(!u) return;
     u.innerHTML='';
-    const f=this.feld();
-    ({schiffe:'uSchiffe', sektoren:'uSektoren', rohr:'uRohre', kultur:'uKultur'})[this.reiter]
-      && this[({schiffe:'uSchiffe', sektoren:'uSektoren', rohr:'uRohre', kultur:'uKultur'})[this.reiter]](u,f);
+    const f=this.feld(); if(!f) return;
+    const m={schiffe:'uSchiffe', sektoren:'uSektoren', rohr:'uRohre', kultur:'uKultur'}[this.reiter];
+    if(m) this[m](u,f);
+  },
+
+  gewaehltesSchiff(f){
+    const info=this.schiffId?Store.db._sch[this.schiffId]:null;
+    return info && info.feld.id===f.id ? info.schiff : null;
   },
 
   /* ---------- Reiter 1: Schiff anpassen ---------- */
   uSchiffe(u,f){
     u.appendChild(el('div','tiny muted',
       'Weisse Punkte ziehen · Doppelklick auf eine Kante fügt einen Punkt ein · Rechtsklick löscht ihn.'));
-    const info=this.schiffId?Store.db._sch[this.schiffId]:null;
-    const s=info&&info.feld.id===f.id?info.schiff:null;
+    const s=this.gewaehltesSchiff(f);
     const bar=el('div','row wrap'); bar.style.marginTop='9px';
     bar.innerHTML=`
-      ${s?`<span class="chip g">Schiff ${esc(s.nummer)} gewählt · ${s.aren?s.aren+' Aren':'Aren fehlen'}</span>`:
+      ${s?`<span class="chip g">${esc(Store.schiffName(s))} gewählt · ${s.aren?s.aren+' Aren':'Aren fehlen'}</span>`:
           '<span class="chip">Schiff im Plan anklicken</span>'}
       <span class="sp"></span>
-      <button class="btn sm" onclick="Admin.schiffeVerwalten('${f.id}')">Schiffe-Tabelle (${f.schiffe.length})</button>
+      <button class="btn sm" onclick="Admin.schiffeVerwalten('${f.id}')">Schiffe-Tabelle (${Store.echteSchiffe(f).length})</button>
       <button class="btn sm ghost" onclick="Admin.schiffeAufteilen('${f.id}')">In n Streifen teilen…</button>
       <button class="btn sm ghost" onclick="Admin.feldBearbeiten('${f.id}')">Stammdaten</button>`;
     u.appendChild(bar);
-    if(f.hinweis) u.appendChild(el('div','warnbox tiny',esc(f.hinweis))).style.marginTop='9px';
+    if(f.schiffe.some(x=>x.implizit)){
+      const i=el('div','infobox tiny'); i.style.marginTop='9px';
+      i.innerHTML=`<b>Dieses Feld hat keine nummerierten Schiffe.</b> Es wird als eine einzige Fläche
+        bewässert — Kultur und Regel lassen sich trotzdem im Reiter „Kultur" erfassen.
+        Über „In n Streifen teilen…" entstehen bei Bedarf nummerierte Schiffe.`;
+      u.appendChild(i);
+    }
+    if(f.unsicher||f.hinweis){
+      const w=el('div','warnbox tiny'); w.style.marginTop='9px';
+      w.innerHTML=`${f.unsicher?'<b>Diese Digitalisierung ist unsicher — bitte genau prüfen.</b> ':''}${esc(f.hinweis||'')}`;
+      u.appendChild(w);
+    }
   },
 
   /* ---------- Reiter 2: Sektor anpassen ---------- */
   uSektoren(u,f){
-    const info=this.schiffId?Store.db._sch[this.schiffId]:null;
-    const s=info&&info.feld.id===f.id?info.schiff:null;
+    const s=this.gewaehltesSchiff(f);
     u.appendChild(el('div','tiny muted',
       s?'Sektor-Punkte (orange) ziehen zum Anpassen. Sektoren teilen ein Schiff in Sätze oder verschiedene Kulturen.'
        :'Zuerst im Plan das Schiff anklicken, das unterteilt werden soll.'));
@@ -100,7 +117,7 @@ const FeldEditor = {
     add.disabled=!s;
     add.onclick=()=>this.sektorTeilenDialog(f,s);
     bar.appendChild(add);
-    if(s) bar.appendChild(el('span','chip g','Schiff '+esc(s.nummer)));
+    if(s) bar.appendChild(el('span','chip g',esc(Store.schiffName(s))));
     u.appendChild(bar);
 
     /* Liste aller Sektoren des Feldes */
@@ -111,20 +128,25 @@ const FeldEditor = {
       box.innerHTML='<div class="sec-title" style="margin-top:0">Sektoren in '+esc(f.name)+'</div>'+
         alle.map(({k,sc})=>{
           const ku=k.kulturId?Store.kultur(k.kulturId):null;
-          return `<div class="row" style="padding:6px 0;border-top:1px solid var(--line)">
+          return `<div class="row wrap" style="padding:6px 0;border-top:1px solid var(--line);gap:6px">
             <span class="chip">${esc(k.name||'?')}</span>
             <span class="tiny" style="flex:1">${ku?`<span class="kultbadge" style="background:${ku.farbe}">${ku.icon||''} ${esc(ku.name)}</span>`
-              :'<span class="dim">noch ohne Kultur</span>'}</span>
+              :'<span class="dim">noch ohne Kultur</span>'}
+              ${k.satz?`<span class="chip" style="margin-left:5px">Satz ${esc(k.satz)}</span>`:''}</span>
             <button class="btn sm ghost" onclick="FeldEditor.sektorLoeschen('${sc.id}','${k.id}')">entfernen</button>
           </div>`;}).join('');
       u.appendChild(box);
     }
   },
   sektorTeilenDialog(f,s){
-    openModal('Schiff '+s.nummer+' in Sektoren teilen',
-      `<div class="grid2">
+    const vorhanden=(s.sektoren||[]).filter(k=>k.polygon).length;
+    openModal(Store.schiffName(s)+' in Sektoren teilen',
+      `${vorhanden?`<div class="warnbox tiny"><b>${vorhanden} Sektor${vorhanden===1?'':'en'} sind bereits eingezeichnet.</b>
+        Die neue Aufteilung ERSETZT sie. Kultur, Pflanzdatum und Bewässerungsstand des ersten
+        bestehenden Sektors werden übernommen.</div>`:''}
+       <div class="grid2">
         <div class="field"><label>Anzahl Sektoren</label>
-          <select class="inp" id="stAnz">${[2,3,4,5,6].map(n=>`<option>${n}</option>`).join('')}</select></div>
+          <select class="inp" id="stAnz">${[2,3,4,5,6].map(n=>`<option value="${n}">${n}</option>`).join('')}</select></div>
         <div class="field"><label>Teilung</label>
           <select class="inp" id="stRicht">
             <option value="h">horizontal (übereinander)</option>
@@ -139,23 +161,35 @@ const FeldEditor = {
     const f=Store.feld(fid), s=f.schiffe.find(x=>x.id===sid); if(!s) return;
     const n=+$('#stAnz').value, r=$('#stRicht').value;
     const polys=teileInStreifen(s.polygon, n, r);
-    s.sektoren=s.sektoren||[];
-    /* bestehende polygonlose Kultur (ganzes Schiff) dem ersten Sektor mitgeben */
-    const alteKultur=(s.sektoren||[]).find(k=>!k.polygon&&k.kulturId);
-    s.sektoren=s.sektoren.filter(k=>k.polygon);      // polygonlose ersetzen
+    const alt=(s.sektoren||[]);
+    /* Zustand des ersten bestehenden Sektors mitnehmen – vor allem letzteBewaesserung,
+       sonst wird die Fälligkeit neu geraten (früherer Befund B5). */
+    const vorlage = alt.find(k=>k.kulturId) || alt[0] || null;
+    s.sektoren=[];                                  // ersetzen, nicht stapeln
     polys.forEach((p,i)=>{
-      s.sektoren.push({id:uid('sek'), name:s.nummer+'.'+(s.sektoren.length+1), polygon:p,
-        kulturId:(i===0&&alteKultur)?alteKultur.kulturId:null,
-        pflanzdatum:(i===0&&alteKultur)?alteKultur.pflanzdatum:null,
-        prioritaet:'normal', pausiert:false});
+      s.sektoren.push({id:uid('sek'), name:(s.nummer||f.name)+'.'+(i+1), polygon:p,
+        kulturId:(i===0&&vorlage)?vorlage.kulturId||null:null,
+        pflanzdatum:(i===0&&vorlage)?vorlage.pflanzdatum||null:null,
+        satz:(i===0&&vorlage)?vorlage.satz||null:null,
+        prioritaet:(i===0&&vorlage)?vorlage.prioritaet||'normal':'normal',
+        pausiert:(i===0&&vorlage)?!!vorlage.pausiert:false,
+        pausiertBis:(i===0&&vorlage)?vorlage.pausiertBis||null:null,
+        letzteBewaesserung:(i===0&&vorlage)?vorlage.letzteBewaesserung||null:null});
     });
-    Store.mark(); closeModal(); this.render();
+    closeModal(); Store.changed('kultur'); this.render();
     toast(n+' Sektoren angelegt – Punkte anpassen, dann im Reiter Kultur zuweisen');
   },
   sektorLoeschen(sid,kid){
     const i=Store.db._sch[sid]; if(!i) return;
-    i.schiff.sektoren=(i.schiff.sektoren||[]).filter(k=>k.id!==kid);
-    Store.mark(); this.render();
+    const k=(i.schiff.sektoren||[]).find(x=>x.id===kid);
+    const beschriftet = k && (k.kulturId||k.satz);
+    const weg=()=>{ i.schiff.sektoren=(i.schiff.sektoren||[]).filter(x=>x.id!==kid);
+      Store.changed('kultur'); this.render(); toast('Sektor entfernt'); };
+    if(!beschriftet) return weg();
+    frage('Sektor entfernen?',
+      `<p style="margin-top:0">Der Sektor <b>${esc(k.name||'')}</b>${k.kulturId
+        ?` mit der Kultur <b>${esc(Store.kultur(k.kulturId)?.name||'?')}</b>`:''} wird gelöscht,
+        samt Pflanzdatum und Bewässerungsstand.</p>`, 'Entfernen', weg, true);
   },
 
   /* ---------- Reiter 3: Rohre ---------- */
@@ -164,20 +198,23 @@ const FeldEditor = {
       'Erster Klick = Anfang, zweiter Klick = Ende. Für Kurven zwischendurch rechtsklicken. '+
       'Die App erkennt selbst, ob das Rohr in einem Schiff liegt (Rohr 3) oder in der Fahrgasse dazwischen (Rohr 3/4). '+
       'Endpunkte lassen sich ziehen, Rechtsklick auf einen Punkt löscht ihn.'));
-    const alle=[];
-    f.schiffe.forEach(s=>(s.rohre||[]).forEach(r=>alle.push({r,s})));
+    const alle=Store.feldRohre(f);
     const box=el('div','card'); box.style.cssText='padding:11px;margin-top:10px';
     box.innerHTML='<div class="sec-title" style="margin-top:0">Rohre in '+esc(f.name)+' ('+alle.length+')</div>'+
-      (alle.length? alle.map(({r,s})=>`<div class="row" style="padding:6px 0;border-top:1px solid var(--line)">
+      (alle.length? alle.map(({rohr:r,schiff:s})=>`<div class="row" style="padding:6px 0;border-top:1px solid var(--line)">
           <span class="chip b">Rohr ${esc(r.name||'?')}</span>
-          <span class="tiny dim" style="flex:1">${r.punkte.length} Punkte · Schiff ${esc(s.nummer)}</span>
+          <span class="tiny dim" style="flex:1">${r.punkte.length} Punkte · bei ${esc(Store.schiffName(s))}</span>
           <button class="btn sm ghost" onclick="FeldEditor.rohrLoeschen('${s.id}','${r.id}')">entfernen</button>
         </div>`).join('')
        : '<div class="tiny dim">Noch keine Rohre — direkt in den Plan klicken.</div>');
     u.appendChild(box);
     if(alle.length){
       const del=el('button','btn sm ghost','Alle Rohre löschen'); del.style.marginTop='8px';
-      del.onclick=()=>{ f.schiffe.forEach(s=>s.rohre=[]); Store.mark(); this.render(); };
+      del.onclick=()=>frage('Alle Rohre löschen?',
+        `<p style="margin-top:0">Alle <b>${alle.length} Rohre</b> in ${esc(f.name)} werden entfernt.
+          Das lässt sich nicht rückgängig machen.</p>`, 'Alle löschen',
+        ()=>{ f.schiffe.forEach(s=>s.rohre=[]); Store.changed('geometrie',{stillerPlan:true});
+              this.render(); toast('Rohre gelöscht'); }, true);
       u.appendChild(del);
     }
   },
@@ -190,13 +227,13 @@ const FeldEditor = {
     if(!ziel){ toast('Kein Schiff in der Nähe'); return; }
     ziel.rohre=ziel.rohre||[];
     ziel.rohre.push({id:uid('rohr'), punkte:pts, name});
-    Store.mark(); this.render();
+    Store.changed('geometrie',{stillerPlan:true}); this.render();
     toast('Rohr '+name+' gespeichert');
   },
   rohrLoeschen(sid,rid){
     const i=Store.db._sch[sid]; if(!i) return;
     i.schiff.rohre=(i.schiff.rohre||[]).filter(r=>r.id!==rid);
-    Store.mark(); this.render();
+    Store.changed('geometrie',{stillerPlan:true}); this.render();
   },
 
   /* ---------- Reiter 4: Kultur ---------- */
@@ -208,24 +245,25 @@ const FeldEditor = {
     let html='<div class="sec-title" style="margin-top:0">Kulturen in '+esc(f.name)+'</div>';
     f.schiffe.forEach(s=>{
       const sk=(s.sektoren||[]);
-      const zeilen = sk.filter(k=>k.kulturId||k.polygon).map(k=>{
+      const zeilen = sk.map(k=>{
         const ku=k.kulturId?Store.kultur(k.kulturId):null;
         const r=ku?Store.regel(f.id,k.kulturId):null;
         return `<div class="row wrap" style="padding:5px 0 5px 14px;gap:6px">
           ${k.name?`<span class="chip">${esc(k.name)}</span>`:''}
           ${ku?`<span class="kultbadge" style="background:${ku.farbe}">${ku.icon||''} ${esc(ku.name)}</span>`
              :'<span class="tiny dim">ohne Kultur — im Plan anklicken</span>'}
+          ${k.satz?`<span class="chip">Satz ${esc(k.satz)}</span>`:''}
           ${k.pflanzdatum?`<span class="tiny dim">seit ${D.niceFull(k.pflanzdatum)}</span>`:''}
           ${k.pausiert?'<span class="chip a">pausiert</span>':''}
-          ${ku?(r?`<span class="chip g">${r.einheit==='frei'?('alle '+r.tage+' Tage'):(r.anzahl+'× '+(r.einheit==='tag'?'/Tag':'/Woche'))} · ${r.mm} mm</span>`
+          ${ku?(r?`<span class="chip g">${esc(Admin.regelText(r))}</span>`
                :'<span class="chip r">Regel fehlt</span>'):''}
           <span class="sp"></span>
           <button class="btn sm ghost" onclick="Admin.sektorBearbeiten('${f.id}','${s.id}','${k.id}')">bearbeiten</button>
         </div>`;}).join('');
       html+=`<div style="padding:7px 0;border-top:1px solid var(--line)">
-        <div class="row"><b class="tiny">Schiff ${esc(s.nummer)}</b><span class="sp"></span>
-          ${sk.some(k=>k.polygon)?'':`<button class="btn sm ghost" onclick="Admin.sektorNeu('${f.id}','${s.id}')">+ Kultur</button>`}
-        </div>${zeilen||''}</div>`;
+        <div class="row"><b class="tiny">${esc(Store.schiffName(s))}</b><span class="sp"></span>
+          ${sk.some(k=>k.polygon)?'':`<button class="btn sm ghost" onclick="Admin.sektorNeu('${f.id}','${s.id}')">${sk.length?'Kultur ändern':'+ Kultur'}</button>`}
+        </div>${zeilen||'<div class="tiny dim" style="padding-left:14px">ohne Kultur — wird nicht eingeplant</div>'}</div>`;
     });
     box.innerHTML=html;
     u.appendChild(box);
@@ -240,4 +278,3 @@ const FeldEditor = {
     else Admin.sektorNeu(f.id, s.id);
   }
 };
-

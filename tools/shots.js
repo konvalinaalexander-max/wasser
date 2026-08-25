@@ -1,0 +1,37 @@
+const {chromium}=require('playwright');
+const LAUNCH={executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']};
+(async()=>{
+  const b=await chromium.launch(LAUNCH);
+  const pg=await b.newPage({viewport:{width:1200,height:1000}});
+  const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
+  await pg.goto('file://'+process.cwd()+'/build/wasserplan.html'); await pg.waitForTimeout(900);
+  await pg.click('.tile'); await pg.waitForTimeout(700);
+  await pg.evaluate(()=>{ closeModal(); Store.db.einstellungen.setupErledigt=true;
+    Store.db.einstellungen.regenGefragtAm=D.today(); Setup.kulturenAusRegeln(); closeModal();
+    Store.db.meldungen.push({id:'m1',datum:D.today(),zeit:'14:20',text:'Pumpe streikt',gelesen:false});
+    Admin.go('plan'); });
+  await pg.waitForTimeout(700);
+  await pg.screenshot({path:'/tmp/shot_plan.png', fullPage:false});
+  await pg.evaluate(()=>{Admin.standortId=Store.db.standorte[28].id; Admin.go('standorte');});
+  await pg.waitForTimeout(1400);
+  await pg.screenshot({path:'/tmp/shot_feld.png'});
+  await pg.evaluate(()=>{Admin.standortId=null; Admin.go('kulturen');}); await pg.waitForTimeout(500);
+  await pg.screenshot({path:'/tmp/shot_regeln.png'});
+  await pg.evaluate(()=>{ Admin.freigabe(D.today(),true); App.home(); }); await pg.waitForTimeout(300);
+
+  const mob=await b.newPage({viewport:{width:390,height:844},deviceScaleFactor:2});
+  mob.on('pageerror',e=>errs.push('MOBIL: '+e.message));
+  await mob.goto('file://'+process.cwd()+'/build/wasserplan.html'); await mob.waitForTimeout(900);
+  await mob.evaluate(()=>{ Store.db.einstellungen.setupErledigt=true;
+    Store.db.einstellungen.regenGefragtAm=D.today(); Setup.kulturenAusRegeln(); closeModal();
+    Engine.tagesPlan(D.today()).freigegeben=true; });
+  await mob.click('.tile.wm'); await mob.waitForTimeout(400);
+  await mob.click('.langpick button[data-l="de"]'); await mob.waitForTimeout(600);
+  await mob.screenshot({path:'/tmp/shot_wm.png'});
+  await mob.evaluate(()=>{ const d=Store.db.plan[D.today()];
+    WM.auftrag=d.auftraege[0]; WM.view='detail'; WM.render(); });
+  await mob.waitForTimeout(600);
+  await mob.screenshot({path:'/tmp/shot_wm_detail.png'});
+  console.log('ERRORS:', errs.length?errs:'keine');
+  await b.close();
+})();

@@ -54,6 +54,7 @@ function PlanView(opts){
   const W=st.bildW, H=st.bildH;
   let modus = opts.modus || 'view';
   let selSchiff = opts.selected || null;
+  const selMehrere = new Set(opts.selectedIds||[]);
   let selSektor = opts.selectedSektor || null;
   let drawPts = null, dragging=null;
 
@@ -123,7 +124,7 @@ function PlanView(opts){
         const P=abs(s.polygon);
         const sektMitKultur=(s.sektoren||[]).filter(k=>k.kulturId);
         const kult=sektMitKultur.length?Store.kultur(sektMitKultur[0].kulturId):null;
-        const gewaehlt = selSchiff===s.id;
+        const gewaehlt = selSchiff===s.id || selMehrere.has(s.id);
         const farbe = (opts.showKultur&&kult) ? kult.farbe : (aktiv?'#3F7A4C':'#9AA093');
 
         const poly=mk('polygon',{ points:P.map(p=>p.join(',')).join(' '), fill:farbe,
@@ -227,7 +228,8 @@ function PlanView(opts){
           const c=polyCenter(P);
           const t=mk('text',{x:c[0],y:c[1],'text-anchor':'middle','dominant-baseline':'middle',
             class:'schiffLbl','font-size':fs,fill:'#1F211D'});
-          t.style.pointerEvents='none'; t.textContent=s.nummer;
+          t.style.pointerEvents='none';
+          t.textContent = s.implizit ? (f.name||'') : s.nummer;
           refs.label[s.id]=t;
           if(opts.showKultur&&kult&&!(s.sektoren||[]).some(k=>k.polygon)){
             const t2=mk('text',{x:c[0],y:c[1]+fs*0.95,'text-anchor':'middle',class:'schiffLbl',
@@ -269,10 +271,17 @@ function PlanView(opts){
       });
 
       if(aktiv||!opts.feldId){
+        const unsicher = aktiv && f.unsicher;
         const u=mk('polygon',{points:abs(f.umriss).map(p=>p.join(',')).join(' '),fill:'none',
-          stroke:aktiv?'#2F5D3A':'#8A9083','stroke-width':px(1.6),
+          stroke:unsicher?'#A3452F':(aktiv?'#2F5D3A':'#8A9083'),'stroke-width':px(unsicher?2.4:1.6),
           'stroke-dasharray':px(6)+' '+px(4),opacity:aktiv?.55:.25});
         u.style.pointerEvents='none';
+        if(unsicher){
+          const b=polyBBox(abs(f.umriss));
+          const w=mk('text',{x:b.x+b.w/2,y:b.y-px(6),'text-anchor':'middle',class:'schiffLbl',
+            'font-size':px(12),fill:'#A3452F'});
+          w.style.pointerEvents='none'; w.textContent='Digitalisierung unsicher';
+        }
       }
     });
 
@@ -388,8 +397,9 @@ function PlanView(opts){
 
   draw();
   requestAnimationFrame(()=>{ neuMessen(); requestAnimationFrame(neuMessen); });
-  setTimeout(neuMessen, 120); setTimeout(neuMessen, 400);
-  if(window.ResizeObserver){ const ro=new ResizeObserver(()=>{ skala=0; neuMessen(); }); ro.observe(wrap); }
+  let ro=null;
+  if(window.ResizeObserver){ ro=new ResizeObserver(()=>{ skala=0; neuMessen(); }); ro.observe(wrap); }
+  const timer=[setTimeout(neuMessen,120), setTimeout(neuMessen,400)];
 
   return {
     node:wrap, redraw:draw,
@@ -399,7 +409,10 @@ function PlanView(opts){
     getSelected(){ return selSchiff; },
     getSelectedSektor(){ return selSektor; },
     abbrechen(){ drawPts=null; draw(); },
-    hatZeichnung(){ return !!(drawPts&&drawPts.length); }
+    hatZeichnung(){ return !!(drawPts&&drawPts.length); },
+    /* Beim Neuaufbau aufräumen – sonst sammeln sich Beobachter und Timer an */
+    destroy(){ if(ro){ ro.disconnect(); ro=null; } timer.forEach(clearTimeout);
+      if(rafPend){ cancelAnimationFrame(rafPend); rafPend=null; } }
   };
 }
 

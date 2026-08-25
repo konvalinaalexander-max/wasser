@@ -8,10 +8,10 @@ const Admin = {
         ['journal','Journal'],['einst','Einstellungen']],
 
   open(){
+    LANG='de';                                   // der Admin arbeitet auf Deutsch
     if(typeof Setup!=='undefined' && Setup.aktiv){ Setup.aktiv=false;
       const sk=document.getElementById('setupSkip'); if(sk) sk.remove(); }
-    $('#admSub').textContent = Store.db.felder.length+' Felder · '+
-      Store.db.felder.reduce((a,f)=>a+f.schiffe.length,0)+' Schiffe';
+    $('#admSub').textContent = Store.db.felder.length+' Felder · '+Store.schiffZahl()+' Schiffe';
     this.renderTabs(); this.render();
     // Ersteinrichtung hat Vorrang vor der Regenabfrage
     if(!Store.db.einstellungen.setupErledigt && !Store.db.einstellungen.setupUebersprungen){
@@ -40,21 +40,29 @@ const Admin = {
     const ws=Store.db.wetterstationen;
     const ohne=ws.filter(w=>!w.standortIds.length).length;
     openModal('Niederschlag erfassen',
-      `<p class="muted" style="margin-top:0">Trage ab, was die Wetterstationen seit der letzten Anmeldung
-        gemessen haben. Die zugeordneten Standorte bekommen den Wert automatisch.</p>
+      `<p class="muted" style="margin-top:0">Trage ab, was die Wetterstationen gemessen haben.
+        Die zugeordneten Standorte bekommen den Wert automatisch.</p>
+       <div class="field"><label>Für welchen Tag?</label>
+         <select class="inp" id="rgTag">
+           <option value="${D.today()}">Heute — ${esc(D.nice(D.today()))}</option>
+           <option value="${D.add(D.today(),-1)}">Gestern — ${esc(D.nice(D.add(D.today(),-1)))}</option>
+           <option value="${D.add(D.today(),-2)}">Vorgestern — ${esc(D.nice(D.add(D.today(),-2)))}</option>
+         </select>
+         <div class="tiny dim" style="margin-top:4px">Regen wird auf den Tag gebucht, an dem er gefallen ist —
+           nur so rechnet die Wasserbilanz richtig.</div></div>
        ${ohne?`<div class="warnbox tiny"><b>${ohne} Station${ohne===1?' ist':'en sind'} noch keinem Standort zugeordnet.</b>
-         Das lässt sich unter Einstellungen → Wetterstationen erledigen.</div>`:''}
-       ${ws.map(w=>`<div class="card" style="padding:12px;margin-bottom:9px">
+         Werte dieser Stationen können nicht verteilt werden. Zuordnen unter Einstellungen → Wetterstationen.</div>`:''}
+       ${ws.map(w=>`<div class="card" style="padding:12px;margin-bottom:9px${w.standortIds.length?'':';opacity:.6'}">
           <div class="row"><b style="flex:1">${esc(w.name)}</b>
             <span class="chip">${w.standortIds.length} Standorte</span></div>
           <div class="row" style="margin-top:9px;gap:9px">
             <input class="inp big wsMm" data-id="${w.id}" type="number" step="0.5" placeholder="0"
-              inputmode="decimal" style="flex:1">
+              inputmode="decimal" style="flex:1" ${w.standortIds.length?'':'disabled'}>
             <span class="muted" style="font-weight:650">mm</span></div>
           <div class="tiny dim" style="margin-top:6px">${w.standortIds.length
             ? esc(w.standortIds.map(i=>Store.standort(i)?.name).filter(Boolean).slice(0,4).join(', '))+
               (w.standortIds.length>4?' …':'')
-            : 'keine Standorte zugeordnet'}</div>
+            : 'keine Standorte zugeordnet — Eingabe gesperrt'}</div>
         </div>`).join('')}
        <div class="tiny dim">Leere Felder werden als „kein Regen" gewertet.</div>`,
       `<button class="btn" onclick="Admin.regenNein()">Kein Regen</button>
@@ -62,37 +70,74 @@ const Admin = {
        <button class="btn" onclick="Admin.go('einst');closeModal()">Stationen zuordnen</button>
        <button class="btn pri" onclick="Admin.regenSpeichern()">Übernehmen</button>`);
   },
-  regenNein(){ Store.db.einstellungen.regenGefragtAm=D.today(); Store.mark(); closeModal();
-    Engine.planNeu(); this.render(); },
+  regenNein(){ Store.db.einstellungen.regenGefragtAm=D.today(); closeModal();
+    Store.changed('regen'); this.render(); },
   regenSpeichern(){
+    const datum=$('#rgTag').value || D.today();
     let total=0, standorte=0;
     document.querySelectorAll('.wsMm').forEach(inp=>{
-      const mm=num(inp.value); if(!mm) return;
+      const mm=num(inp.value); if(mm==null || mm<=0) return;
       const w=Store.db.wetterstationen.find(x=>x.id===inp.dataset.id);
       if(!w||!w.standortIds.length) return;
-      Store.db.regen.push({id:uid('r'), datum:D.today(), mm, standortIds:w.standortIds.slice(),
-        stationId:w.id});
+      Store.db.regen.push({id:uid('r'), datum, mm, standortIds:w.standortIds.slice(), stationId:w.id});
       total++; standorte+=w.standortIds.length;
     });
     Store.db.einstellungen.regenGefragtAm=D.today();
-    Store.mark(); closeModal(); Engine.planNeu(); this.go('plan');
+    closeModal(); Store.changed('regen'); this.go('plan');
     if(total){
       const betroffen=Engine.tagesPlan(D.today()).auftraege.filter(a=>a.regenMm>0).length;
       toast(betroffen
-        ? `Regen erfasst — ${betroffen} Auftrag${betroffen===1?'':'e'} mit Anpassungsvorschlag`
-        : 'Regen erfasst — heute sind keine offenen Aufträge davon betroffen');
+        ? `${total>1?total+' Werte':'Regen'} auf ${standorte} Standorte gebucht — ${betroffen} Auftrag${betroffen===1?'':'e'} mit Anpassungsvorschlag`
+        : `${total>1?total+' Werte':'Regen'} auf ${standorte} Standorte gebucht`);
     } else toast('Kein Regen erfasst');
   },
 
   /* ---------------- TAGESPLAN ---------------- */
   vPlan(p){
     const e=Store.db.einstellungen;
+    const pr=Engine.probleme();
+
     if(!e.setupErledigt){
       const box=el('div','infobox');
       box.innerHTML=`<b>Ersteinrichtung noch offen.</b> Ohne Kulturen und Regeln kann kein Plan entstehen.
         <div style="margin-top:9px"><button class="btn pri sm" onclick="Setup.start()">Ersteinrichtung starten</button></div>`;
       p.appendChild(box);
     }
+    /* Warum der Plan (noch) leer ist – das wurde bisher nirgends gesagt */
+    if(!pr.planbar){
+      const box=el('div','warnbox');
+      box.style.background='var(--rust-soft)'; box.style.borderColor='#E7C3B8'; box.style.color='var(--rust)';
+      box.innerHTML=`<b>Der Plan bleibt leer: keinem Schiff ist bisher eine Kultur mit Regel zugewiesen.</b>
+        <div class="tiny" style="margin-top:6px;color:var(--ink-2)">
+          ${pr.ohneKultur.length} Schiffe ohne Kultur${pr.verwaisteRegeln.length
+            ?` · ${pr.verwaisteRegeln.length} Regeln liegen bereit, aber keine Fläche nutzt sie`:''}.
+          Die Planung rechnet über Sektoren — erst wenn dort „was steht hier, seit wann" erfasst ist, entstehen Aufträge.</div>
+        <div class="row wrap" style="margin-top:10px;gap:7px">
+          <button class="btn pri sm" onclick="Setup.start()">Ersteinrichtung starten</button>
+          ${pr.verwaisteRegeln.length?`<button class="btn sm" onclick="Setup.kulturenAusRegeln()">Kulturen aus den Startregeln übernehmen</button>`:''}
+        </div>`;
+      p.appendChild(box);
+    } else if(pr.ohneRegel.length){
+      const box=el('div','warnbox');
+      box.innerHTML=`<b>${pr.ohneRegel.length} Sektor${pr.ohneRegel.length===1?'':'en'} ohne Bewässerungsregel</b> —
+        ${esc([...new Set(pr.ohneRegel.map(x=>x.feld.name+' · '+(x.kultur?x.kultur.name:'?')))].slice(0,4).join(', '))}${pr.ohneRegel.length>4?' …':''}.
+        Diese Flächen werden nicht eingeplant.
+        <button class="btn sm" style="margin-left:8px" onclick="Admin.go('kulturen')">Regeln ansehen</button>`;
+      p.appendChild(box);
+    }
+
+    /* Meldungen des Wassermanns – wurden bisher gespeichert und nie angezeigt */
+    const offene=(Store.db.meldungen||[]).filter(m=>!m.gelesen);
+    if(offene.length){
+      const box=el('div','warnbox');
+      box.style.background='var(--amber-soft)'; box.style.borderColor='#E8D2A6';
+      box.innerHTML=`<b>${offene.length} Meldung${offene.length===1?'':'en'} vom Wassermann</b>
+        ${offene.slice(0,3).map(m=>`<div class="tiny" style="margin-top:5px">
+          ${esc(D.nice(m.datum))}, ${esc(m.zeit)} — „schaffe ich heute nicht"${m.text?': '+esc(m.text):''}</div>`).join('')}
+        <div style="margin-top:9px"><button class="btn sm" onclick="Admin.meldungenGelesen()">Zur Kenntnis genommen</button></div>`;
+      p.appendChild(box);
+    }
+
     const datum=D.add(D.today(), this.tagOffset);
     const tp=Engine.tagesPlan(datum);
 
@@ -100,23 +145,28 @@ const Admin = {
     const heute=Engine.tagesPlan(D.today());
     const ueberf=heute.auftraege.filter(a=>a.ueberfaellig>0).length;
     const woGrenze=D.add(D.today(),-6);
-    let m3Woche=0, nWoche=0;
-    Store.db.journal.forEach(e=>{ if(e.datum>=woGrenze){ nWoche++; if(e.m3) m3Woche+=e.m3; } });
-    let regenWoche=0;
-    Store.db.regen.forEach(r=>{ if(r.datum>=woGrenze) regenWoche=Math.max(regenWoche,r.mm); });
+    let m3Woche=0;
+    Store.db.journal.forEach(j=>{ if(j.datum>=woGrenze && j.m3) m3Woche+=j.m3; });
+    /* Regen der letzten 7 Tage: Summe je Tag, danach die Summe über die Tage –
+       das Maximum eines Einzeleintrags war irreführend (früherer Befund D1). */
+    const proTag={};
+    Store.db.regen.forEach(r=>{ if(r.datum>=woGrenze && r.datum<=D.today())
+      proTag[r.datum]=Math.max(proTag[r.datum]||0, r.mm); });
+    const regenWoche=Object.values(proTag).reduce((a,b)=>a+b,0);
     const statr=el('div','statrow');
     statr.innerHTML=`
       <div class="stt"><b>${heute.auftraege.length}</b><span>heute fällig</span></div>
       <div class="stt"><b style="color:${ueberf?'var(--rust)':'inherit'}">${ueberf}</b><span>überfällig</span></div>
       <div class="stt"><b>${Math.round(m3Woche)} m³</b><span>Wasser · 7 Tage</span></div>
-      <div class="stt"><b>${regenWoche?regenWoche+' mm':'–'}</b><span>Regen · 7 Tage</span></div>`;
+      <div class="stt"><b>${regenWoche?Math.round(regenWoche*10)/10+' mm':'–'}</b><span>Regen · 7 Tage</span></div>`;
     p.appendChild(statr);
 
+    const maxOffset=(e.planungsHorizont||10)-1;
     const head=el('div','dayhead');
-    head.innerHTML=`<button class="dnav" onclick="Admin.tagWechsel(-1)">‹</button>
+    head.innerHTML=`<button class="dnav" ${this.tagOffset<=0?'disabled':''} onclick="Admin.tagWechsel(-1)">‹</button>
       <div class="daytitle"><div class="d1">${esc(D.nice(datum))}</div>
       <div class="d2">${esc(D.rel(datum))} · ${tp.auftraege.length} Aufträge · ${tp.standorte} Standorte</div></div>
-      <button class="dnav" onclick="Admin.tagWechsel(1)">›</button>`;
+      <button class="dnav" ${this.tagOffset>=maxOffset?'disabled':''} onclick="Admin.tagWechsel(1)">›</button>`;
     p.appendChild(head);
 
     const bar=el('div','row wrap'); bar.style.marginBottom='12px';
@@ -132,8 +182,17 @@ const Admin = {
       w.innerHTML=`<b>Maximale Kapazität erreicht.</b> ${tp.grund==='standorte'
         ? `${tp.standorte} Standorte an einem Tag — erfahrungsgemäss schafft der Wassermann etwa ${tp.kapazitaet}.`
         : `${tp.auftraege.length} Aufträge an einem Tag — üblich sind bis zu ${tp.maxAuftraege}.`}
-        Mit den Pfeilen lassen sich einzelne Aufträge auf einen anderen Tag schieben.`;
+        Was hier steht, ist bereits überfällig und lässt sich nicht weiter aufschieben — mit den Pfeilen
+        kannst du trotzdem einzelne Aufträge verschieben.`;
       p.appendChild(w);
+    }
+    if(tp.zurueckgestellt){
+      const z=el('div','infobox');
+      z.innerHTML=`<b>${tp.zurueckgestellt} weitere${tp.zurueckgestellt===1?'r Auftrag wäre':' Aufträge wären'} heute fällig</b>,
+        ${tp.zurueckgestellt===1?'liegt':'liegen'} aber über der Tageskapazität von ${tp.kapazitaet} Standorten.
+        ${tp.zurueckgestellt===1?'Er rutscht':'Sie rutschen'} auf die Folgetage und ${tp.zurueckgestellt===1?'steht':'stehen'}
+        dort weiter vorne. Mit „+ Auftrag" lässt sich trotzdem etwas dazunehmen.`;
+      p.appendChild(z);
     }
     const regenHeute=Store.db.regen.filter(r=>r.datum===datum);
     if(regenHeute.length){
@@ -144,7 +203,8 @@ const Admin = {
     }
     if(tp.freigegeben){
       const o=el('div','okbox');
-      o.innerHTML=`<b>Für den Wassermann freigegeben.</b> Änderungen wirken sofort.
+      o.innerHTML=`<b>Für den Wassermann freigegeben.</b>
+        ${tp.geaendertNachFreigabe?'<span style="color:var(--rust)">Seit der Freigabe geändert — der Wassermann sieht die Änderung erst beim nächsten Öffnen.</span>':'Änderungen wirken sofort.'}
         <button class="btn sm ghost" style="margin-left:8px" onclick="Admin.freigabe('${datum}',false)">Freigabe zurücknehmen</button>`;
       p.appendChild(o);
     }
@@ -164,19 +224,24 @@ const Admin = {
     const vor=el('div'); vor.style.marginTop='22px';
     vor.innerHTML='<div class="sec-title">Vorschau nächste Tage</div>';
     for(let i=1;i<=4;i++){
+      if(this.tagOffset+i>maxOffset) break;
       const d=D.add(datum,i), t=Engine.tagesPlan(d);
       const b=el('button','lrow');
       b.innerHTML=`<span class="dot ${t.freigegeben?'ok':(t.ueberlastet?'warn':'')}"></span>
         <span class="lmain"><b>${esc(D.nice(d))}</b><span>${t.auftraege.length} Aufträge · ${t.standorte} Standorte
         ${t.freigegeben?' · freigegeben':''}${t.ueberlastet?' · über Kapazität':''}</span></span><span class="arw">›</span>`;
-      b.onclick=()=>{this.tagOffset+=i; this.render();};
+      b.onclick=()=>{this.tagOffset=clamp(this.tagOffset+i,0,maxOffset); this.render();};
       vor.appendChild(b);
     }
     p.appendChild(vor);
   },
+  meldungenGelesen(){ (Store.db.meldungen||[]).forEach(m=>m.gelesen=true); Store.mark(); this.render(); },
   tagWechsel(dir){
+    const max=(Store.db.einstellungen.planungsHorizont||10)-1;
+    const neu=clamp(this.tagOffset+dir,0,max);
+    if(neu===this.tagOffset) return;                       // kein toter Klick mehr
     const s=this._stack; if(s) s.classList.add(dir>0?'left':'right');
-    setTimeout(()=>{ this.tagOffset=Math.max(0,this.tagOffset+dir); this.render();
+    setTimeout(()=>{ this.tagOffset=neu; this.render();
       const n=this._stack; if(n){ n.classList.add(dir>0?'right':'left');
         requestAnimationFrame(()=>requestAnimationFrame(()=>n.classList.remove('left','right'))); } }, 150);
   },
@@ -184,14 +249,17 @@ const Admin = {
   auftragCard(a,datum){
     const f=Store.feld(a.feldId), st=Store.standort(a.standortId), k=a.kulturId?Store.kultur(a.kulturId):null;
     const eff=Engine.effektivMm(a), dauer=Engine.effektivDauer(a);
+    const spr=Engine.sprenklerFuer(a.schiffIds);
     const hatAnpassung = a.angepasstMm!=null && a.angepasstMm!==a.zielMm;
     const row=el('div','auftrag');
     const bd=el('div','abody prio-'+a.prioritaet);
+    const schiffText = a.nummern.length ? 'Schiffe '+esc(a.nummern.join(', ')) : 'ganzes Feld';
     bd.innerHTML=`
       <div class="row" style="gap:8px;align-items:flex-start">
         <div style="flex:1;min-width:0">
-          <h4>${esc(f.name)}</h4>
-          <div class="tiny muted">${esc(st.name)} · ${a.nummern.length?'Schiffe '+esc(a.nummern.join(', ')):'ganzes Feld'}</div>
+          <h4>${esc(f?f.name:'?')}</h4>
+          <div class="tiny muted">${esc(st?st.name:'?')} · ${schiffText}${
+            a.gaenge?` · Gang ${a.gangNr}/${a.gaenge}${a.zeitfenster!=null?' ab '+a.zeitfenster+' Uhr':''}`:''}</div>
         </div>
         ${k?`<span class="kultbadge" style="background:${k.farbe}">${esc(k.name)}</span>`:''}
       </div>
@@ -217,42 +285,73 @@ const Admin = {
       <div class="abig">
         <div class="kv"><b>${eff===0?'entfällt':eff+' mm'}</b><span>${hatAnpassung&&a.anpassungAngenommen?'angepasst':'Zielmenge'}</span></div>
         <div class="kv"><b>${dauer?hhmm(dauer):'–'}</b><span>Dauer</span></div>
+        ${spr.kreis?`<div class="kv"><b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>Sprenkler</span></div>`:''}
         ${a.ueberfaellig>0?`<div class="kv"><b style="color:var(--rust)">+${a.ueberfaellig} T</b><span>überfällig</span></div>`:''}
         ${a.letzteBew?`<div class="kv"><b>${D.diff(a.letzteBew,datum)} T</b><span>seit letzter Bew.</span></div>`:''}
       </div>
       <div class="ameta">
         ${a.prioritaet!=='normal'?`<span class="chip ${a.prioritaet==='hoch'?'r':''}">Priorität ${esc(a.prioritaet)}</span>`:''}
-        ${a.dauerQuelle==='global'?'<span class="chip a">Dauer geschätzt</span>':''}
+        ${a.dauerQuelle==='global'||a.dauerQuelle==='keine'?'<span class="chip a">Dauer geschätzt</span>':''}
+        ${a.geschaetzt?'<span class="chip a">Fälligkeit geschätzt — keine Historie</span>':''}
         ${a.quelle==='manuell'?'<span class="chip b">manuell</span>':''}
         ${a.verschoben?'<span class="chip">verschoben</span>':''}
+        ${a.bearbeitet?'<span class="chip">angepasst</span>':''}
         ${a.notiz?`<span class="chip">Notiz</span>`:''}
         ${eff===0?'<span class="chip a">entfällt wegen Regen</span>':''}
+        ${(a.gruppen||[]).length?`<span class="chip b" title="Aus dem Journal: diese Schiffe liefen bisher gemeinsam">üblich: ${
+          esc(a.gruppen.map(g=>g.join('+')).join(' · '))}</span>`:''}
         <span class="sp"></span>
         <button class="btn sm ghost" onclick="Admin.auftragBearbeiten('${datum}','${a.id}')">Anpassen</button>
       </div>`;
     const l=el('button','mv','‹'); l.title='Auf den Vortag schieben';
-    l.onclick=()=>{Engine.verschiebe(datum,a.id,-1); this.render(); toast('Auf '+D.nice(D.add(datum,-1))+' geschoben');};
+    l.onclick=()=>this.schiebe(datum,a.id,-1);
     const r=el('button','mv','›'); r.title='Auf den Folgetag schieben';
-    r.onclick=()=>{Engine.verschiebe(datum,a.id,1); this.render(); toast('Auf '+D.nice(D.add(datum,1))+' geschoben');};
+    r.onclick=()=>this.schiebe(datum,a.id,1);
     row.appendChild(l); row.appendChild(bd); row.appendChild(r);
     return row;
   },
+  schiebe(datum,id,richtung){
+    const res=Engine.verschiebe(datum,id,richtung);
+    if(!res.ok){ toast(res.grund); return; }
+    this.render(); toast('Auf '+D.nice(res.ziel)+' geschoben');
+  },
+
+  /* Ein Auftrag im Plan – über alle Tage, weil Verschieben den Tag ändern kann */
+  findeAuftrag(datum,id){
+    const tp=Engine.tagesPlan(datum);
+    return tp.auftraege.find(x=>x.id===id)||null;
+  },
+  /* Änderung festhalten, damit sie die nächste Neuberechnung überlebt */
+  eingriffSpeichern(a, daten){
+    if(a.quelle==='manuell'){
+      const liste=Store.db.zusatz[a.datum]||[];
+      const w=liste.find(x=>x.id===a.id);
+      if(w) Object.assign(w, daten);
+    } else {
+      Engine.setzeEingriff(a.ursprung||a.datum, a.key, daten);
+    }
+    if(Engine.tagesPlan(a.datum).freigegeben) Engine.tagesPlan(a.datum).geaendertNachFreigabe=true;
+    Store.changed('plan'); Engine.planNeu();
+  },
   mengeSetzen(datum,id,welche,wert){
-    const a=Engine.tagesPlan(datum).auftraege.find(x=>x.id===id); if(!a) return;
+    const a=this.findeAuftrag(datum,id); if(!a) return;
     const v=num(wert); if(v==null) return;
-    if(welche==='ziel') a.zielMm=v; else { a.angepasstMm=v; a.anpassungManuell=true; }
-    a.dauerMin=Engine.dauerFuer(a.schiffIds,a.zielMm).min;
-    Store.mark(); this.render();
+    this.eingriffSpeichern(a, welche==='ziel' ? {zielMm:v} : {angepasstMm:v});
+    this.render();
   },
   anpassungToggle(datum,id,on){
-    const a=Engine.tagesPlan(datum).auftraege.find(x=>x.id===id); if(!a) return;
-    a.anpassungAngenommen=on; Store.mark(); this.render();
+    const a=this.findeAuftrag(datum,id); if(!a) return;
+    this.eingriffSpeichern(a, {anpassungAngenommen:!!on});
+    this.render();
     toast(on?'Angepasste Menge gilt':'Ursprüngliche Zielmenge gilt');
   },
   auftragBearbeiten(datum,id){
-    const a=Engine.tagesPlan(datum).auftraege.find(x=>x.id===id); if(!a) return;
+    const a=this.findeAuftrag(datum,id); if(!a) return;
+    const tp=Engine.tagesPlan(datum);
     openModal('Auftrag anpassen',
-      `<div class="grid2">
+      `${tp.freigegeben?`<div class="warnbox tiny"><b>Dieser Tag ist bereits freigegeben.</b>
+         Der Wassermann sieht die Änderung erst, wenn er die Liste neu öffnet.</div>`:''}
+       <div class="grid2">
          <div class="field"><label>Zielmenge (mm)</label>
            <input class="inp" id="abMm" type="number" value="${a.zielMm}"></div>
          <div class="field"><label>Angepasste Menge (mm, optional)</label>
@@ -263,82 +362,101 @@ const Admin = {
          <span>Angepasste Menge verwenden</span></label>
        <div class="field"><label>Priorität</label>
          <select class="inp" id="abPrio">${['hoch','normal','niedrig'].map(x=>
-           `<option ${a.prioritaet===x?'selected':''}>${x}</option>`).join('')}</select></div>
+           `<option value="${x}" ${a.prioritaet===x?'selected':''}>${x}</option>`).join('')}</select></div>
        <div class="field"><label>Notiz für den Wassermann</label>
-         <input class="inp" id="abNotiz" value="${esc(a.notiz||'')}" placeholder="z.B. nur halbe Menge, Ernte morgen"></div>`,
+         <input class="inp" id="abNotiz" value="${esc(a.notiz||'')}" placeholder="z.B. nur halbe Menge, Ernte morgen"></div>
+       <div class="tiny dim">Anpassungen bleiben erhalten, auch wenn der Plan neu gerechnet wird.</div>`,
       `<button class="btn danger" onclick="Admin.auftragLoeschen('${datum}','${id}')">Entfernen</button>
        <div class="sp"></div><button class="btn" onclick="closeModal()">Abbrechen</button>
        <button class="btn pri" onclick="Admin.auftragSpeichern('${datum}','${id}')">Übernehmen</button>`);
   },
   auftragSpeichern(datum,id){
-    const a=Engine.tagesPlan(datum).auftraege.find(x=>x.id===id); if(!a) return;
-    const mm=num($('#abMm').value); if(mm) a.zielMm=mm;
-    a.angepasstMm=num($('#abAnp').value);
-    if(a.angepasstMm!=null) a.anpassungManuell=true;
-    a.anpassungAngenommen=$('#abAnn').checked && a.angepasstMm!=null;
-    a.prioritaet=$('#abPrio').value; a.notiz=$('#abNotiz').value.trim()||null;
-    a.dauerMin=Engine.dauerFuer(a.schiffIds,a.zielMm).min;
-    Store.mark(); closeModal(); this.render(); toast('Auftrag angepasst');
+    const a=this.findeAuftrag(datum,id); if(!a) return;
+    const mm=num($('#abMm').value);
+    const anp=num($('#abAnp').value);
+    const daten={ prioritaet:$('#abPrio').value, notiz:$('#abNotiz').value.trim()||null,
+                  angepasstMm:anp, anpassungAngenommen:$('#abAnn').checked && anp!=null };
+    if(mm!=null) daten.zielMm=mm;
+    closeModal(); this.eingriffSpeichern(a, daten); this.render(); toast('Auftrag angepasst');
   },
   auftragLoeschen(datum,id){
-    const tp=Engine.tagesPlan(datum); tp.auftraege=tp.auftraege.filter(x=>x.id!==id);
-    Store.mark(); closeModal(); this.render(); toast('Auftrag entfernt');
+    const a=this.findeAuftrag(datum,id); if(!a) return;
+    closeModal();
+    if(a.quelle==='manuell'){
+      Store.db.zusatz[a.datum]=(Store.db.zusatz[a.datum]||[]).filter(x=>x.id!==id);
+      Store.mark();
+    } else {
+      Engine.setzeEingriff(a.ursprung||a.datum, a.key, {entfernt:true});
+    }
+    Engine.planNeu(); this.render();
+    toast('Auftrag entfernt — er kommt beim Neurechnen nicht zurück');
   },
   neuerAuftrag(datum){
     const felder=Store.db.felder.filter(f=>f.bewaessert!==false && f.schiffe.length);
+    if(!felder.length){ toast('Keine bewässerten Felder vorhanden'); return; }
     openModal('Auftrag hinzufügen',
       `<div class="field"><label>Feld</label><select class="inp" id="naFeld" onchange="Admin._naSchiffe()">
-        ${felder.map(f=>`<option value="${f.id}">${esc(Store.standort(f.standortId).name)} · ${esc(f.name)}</option>`).join('')}
+        ${felder.map(f=>`<option value="${esc(f.id)}">${esc(Store.standort(f.standortId).name)} · ${esc(f.name)}</option>`).join('')}
        </select></div>
-       <div class="field"><label>Schiffe</label><div id="naSchiffe" class="bigpick"></div></div>
+       <div class="field"><label>Schiffe <span class="tiny dim">(keins gewählt = alle)</span></label>
+         <div id="naSchiffe" class="bigpick"></div></div>
        <div class="grid2">
         <div class="field"><label>Zielmenge (mm)</label><input class="inp" id="naMm" type="number" value="15"></div>
         <div class="field"><label>Priorität</label><select class="inp" id="naPrio">
-          <option>normal</option><option>hoch</option><option>niedrig</option></select></div></div>`,
+          <option value="normal">normal</option><option value="hoch">hoch</option>
+          <option value="niedrig">niedrig</option></select></div></div>`,
       `<button class="btn" onclick="closeModal()">Abbrechen</button>
        <button class="btn pri" onclick="Admin.neuerAuftragSpeichern('${datum}')">Hinzufügen</button>`);
     this._naSchiffe();
   },
   _naSchiffe(){
     const f=Store.feld($('#naFeld').value); const c=$('#naSchiffe'); c.innerHTML='';
-    f.schiffe.forEach(s=>{ const b=el('button',null,esc(s.nummer)); b.dataset.id=s.id;
+    if(!f) return;
+    f.schiffe.forEach(s=>{ const b=el('button',null,esc(s.implizit?'Ganzes Feld':s.nummer)); b.dataset.id=s.id;
       b.onclick=()=>b.classList.toggle('on'); c.appendChild(b); });
   },
   neuerAuftragSpeichern(datum){
-    const f=Store.feld($('#naFeld').value);
+    const f=Store.feld($('#naFeld').value); if(!f) return;
     const sel=[...document.querySelectorAll('#naSchiffe button.on')].map(b=>b.dataset.id);
     const ids=sel.length?sel:f.schiffe.map(s=>s.id);
     const mm=num($('#naMm').value)||15;
-    Engine.tagesPlan(datum).auftraege.push({ id:'a-man-'+uid(), datum, standortId:f.standortId, feldId:f.id,
-      kulturId:(f.schiffe.flatMap(s=>s.sektoren||[]).find(k=>k.kulturId)||{}).kulturId||null,
-      schiffIds:ids, nummern:f.schiffe.filter(s=>ids.includes(s.id)).map(s=>s.nummer),
-      zielMm:mm, regenMm:0, angepasstMm:null, anpassungAngenommen:false,
+    const gewaehlt=f.schiffe.filter(s=>ids.includes(s.id));
+    /* Kultur aus den tatsächlich gewählten Schiffen ableiten, nicht aus dem ganzen Feld */
+    const kulturId=(gewaehlt.flatMap(s=>s.sektoren||[]).find(k=>k.kulturId)||{}).kulturId||null;
+    const a={ id:'a-man-'+uid(), key:'man-'+uid(), datum, ursprung:datum,
+      standortId:f.standortId, feldId:f.id, kulturId,
+      schiffIds:ids, sektorIds:gewaehlt.flatMap(s=>(s.sektoren||[]).map(k=>k.id)),
+      nummern:gewaehlt.map(s=>s.nummer).filter(n=>n!==''),
+      zielMm:mm, regenMm:0, angepasstMm:null, anpassungAngenommen:false, anpassungManuell:false,
       dauerMin:Engine.dauerFuer(ids,mm).min, dauerQuelle:'manuell',
-      prioritaet:$('#naPrio').value, ueberfaellig:0, erledigt:false, quelle:'manuell' });
-    Store.mark(); closeModal(); this.render();
+      prioritaet:$('#naPrio').value, ueberfaellig:0, erledigt:false, quelle:'manuell', notiz:null };
+    (Store.db.zusatz[datum]=Store.db.zusatz[datum]||[]).push(a);
+    closeModal(); Engine.planNeu(); this.render(); toast('Auftrag hinzugefügt');
   },
   freigabePruefen(datum){
     const tp=Engine.tagesPlan(datum);
     const ohneRohr=tp.auftraege.filter(a=>{
       const f=Store.feld(a.feldId);
-      return !a.schiffIds.some(id=>{const i=Store.db._sch[id]; return i&&(i.schiff.rohre||[]).length;});
+      return f && !Store.feldRohre(f).length;
     });
     if(!tp.ueberlastet && !ohneRohr.length){ this.freigabe(datum,true); return; }
     openModal('Wirklich freigeben?',
       `${tp.ueberlastet?`<div class="warnbox"><b>Der Tag liegt über der Kapazität.</b><br>
         ${tp.standorte} Standorte und ${tp.auftraege.length} Aufträge — üblich sind ${tp.kapazitaet} Standorte.
         Bist du sicher, dass der Wassermann das schafft?</div>`:''}
-       ${ohneRohr.length?`<div class="infobox"><b>${ohneRohr.length} Auftrag${ohneRohr.length===1?'':'e'} ohne eingezeichnetes Rohr:</b>
-         ${esc(ohneRohr.map(a=>Store.feld(a.feldId).name).join(', '))}.
+       ${ohneRohr.length?`<div class="infobox"><b>${ohneRohr.length} Auftrag${ohneRohr.length===1?'':'e'} auf Feldern ohne eingezeichnetes Rohr:</b>
+         ${esc([...new Set(ohneRohr.map(a=>Store.feld(a.feldId).name))].join(', '))}.
          Das ist nur ein Hinweis — bewässern lässt sich trotzdem.</div>`:''}`,
       `<button class="btn" onclick="closeModal()">Nochmals anschauen</button>
        <button class="btn warn" onclick="closeModal();Admin.freigabe('${datum}',true)">Trotzdem freigeben</button>`);
   },
   freigabe(datum,on){
-    const tp=Engine.tagesPlan(datum); tp.freigegeben=on;
+    const tp=Engine.tagesPlan(datum);
+    if(tp.nurLesen){ toast('Dieser Tag liegt ausserhalb des Planungshorizonts'); return; }
+    tp.freigegeben=on;
     tp.freigegebenAm=on?new Date().toISOString():null;
+    tp.geaendertNachFreigabe=false;
     Store.mark(); this.render();
     toast(on?'Für den Wassermann freigegeben':'Freigabe zurückgenommen');
   }
 };
-
