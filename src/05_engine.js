@@ -304,7 +304,7 @@ const Engine = {
   },
 
   /* ---- Aufträge eines Tages bilden ---- */
-  auftraegeFuer(datum, virtuell){
+  auftraegeFuer(datum, virtuell, vorziehen){
     const roh=[];
     Store.sektoren().forEach(e=>{
       const s=e.sektor;
@@ -312,7 +312,11 @@ const Engine = {
       if(s.pausiert && (!s.pausiertBis || s.pausiertBis >= datum)) return;
       if(!s.kulturId) return;
       const b=this.bilanz(e, datum, virtuell); if(!b) return;
-      if(b.defizit < b.menge*0.95) return;                 // noch nicht fällig
+      /* Hat der Admin den Auftrag auf einen früheren Tag gezogen, zählt er dort
+         schon ab halbem Defizit als fällig – sonst liesse er sich nicht vorziehen. */
+      const frueher = vorziehen && vorziehen.has(e.feld.id+'|'+s.kulturId);
+      const schwelle = frueher ? b.menge*0.5 : b.menge*0.95;
+      if(b.defizit < schwelle) return;
       roh.push({ e, b });
     });
 
@@ -440,6 +444,22 @@ const Engine = {
     const plan = {};
     const virtuell = {};              // sektorId → zuletzt (geplant) bewässert
 
+    /* Verschiebungen des Admins vorab auswerten.
+       Nach vorne geschoben  → der Auftrag ist bis zum Zieltag gesperrt.
+       Nach hinten gezogen   → er darf am Zieltag schon früher fällig werden.
+       Beides hängt am stabilen key, nicht am Ursprungstag – deshalb bleibt es
+       auch nach mehrfachem Verschieben genau EIN Auftrag. */
+    const sperre={}, vorziehen={};
+    Object.entries(Store.db.eingriffe).forEach(([tag,keys])=>{
+      Object.entries(keys).forEach(([key,e])=>{
+        if(!e.verschobenNach) return;
+        const von=e.verschobenVon||tag;
+        if(e.verschobenNach>von) sperre[key]=e.verschobenNach;
+        else if(e.verschobenNach<von) vorziehen[key]=e.verschobenNach;
+      });
+    });
+    const prefix = k => k.split('~').slice(0,2).join('|');
+
     for(let i=0;i<horizont;i++){
       const d = D.add(startDatum, i);
       const bestehend = Store.db.plan[d];
@@ -462,31 +482,26 @@ const Engine = {
         continue;
       }
 
-      /* 1 · automatische Kandidaten für diesen Tag */
-      let kandidaten = this.auftraegeFuer(d, virtuell);
+      /* 1 · automatische Kandidaten für diesen Tag; vorgezogene dürfen früher rein */
+      const heuteVorziehen=new Set(Object.entries(vorziehen)
+        .filter(([k,ziel])=>ziel===d).map(([k])=>prefix(k)));
+      let kandidaten = this.auftraegeFuer(d, virtuell, heuteVorziehen);
 
-      /* 2 · Eingriffe anwenden: entfernte raus, verschobene umhängen */
-      const verschobenHierher=[];
+      /* 2 · Eingriffe anwenden: entfernte raus, gesperrte warten auf ihren Zieltag */
       kandidaten = kandidaten.filter(a=>{
-        const e=this.eingriff(d, a.key);
-        if(e && e.entfernt) return false;
-        if(e && e.verschobenNach && e.verschobenNach!==d){
-          a.datum=e.verschobenNach; a.verschoben=true;
-          verschobenHierher.push(a);                 // wandert weiter unten in den Zieltag
-          return false;
+        if(this.eingriff(d, a.key)?.entfernt) return false;
+        if(sperre[a.key]){
+          if(d < sperre[a.key]) return false;            // noch gesperrt
+          a.verschoben=true;                             // am Zieltag angekommen
         }
+        if(vorziehen[a.key] && d===vorziehen[a.key]) a.verschoben=true;
         return true;
       }).map(a=>this.overlay(a));
 
-      /* 3 · Aufträge, die von einem FRÜHEREN Tag hierher verschoben wurden */
-      const zugezogen=(this._parkplatz||[]).filter(a=>a.datum===d);
-      this._parkplatz=(this._parkplatz||[]).filter(a=>a.datum!==d);
-      zugezogen.forEach(a=>this.overlay(a));
-
-      /* 4 · von Hand angelegte Aufträge */
+      /* 3 · von Hand angelegte Aufträge */
       const zusatz=(Store.db.zusatz[d]||[]).map(a=>Object.assign({},a,{datum:d}));
 
-      let alle=[...zugezogen, ...zusatz, ...kandidaten].sort(this.dringlichkeit);
+      let alle=[...zusatz, ...kandidaten].sort(this.dringlichkeit);
 
       /* 5 · entzerren nach der Tageskapazität (Pflichtenheft §9.3/§9.5).
              Sortiert ist bereits nach Dringlichkeit. Was heute nicht mehr
@@ -509,17 +524,10 @@ const Engine = {
         alle=behalten;
       }
 
-      /* 6 · in den Zieltag verschobene für später parken */
-      verschobenHierher.forEach(a=>{
-        if(a.datum>d && a.datum<=D.add(startDatum,horizont-1))
-          (this._parkplatz=this._parkplatz||[]).push(this.overlay(a));
-      });
-
       plan[d] = { datum:d, auftraege:alle, freigegeben:false, zurueckgestellt };
       this.kennzahlen(plan[d], kap);
       alle.forEach(a=> (a.sektorIds||[]).forEach(sid=> virtuell[sid]=d));
     }
-    this._parkplatz=[];
     return plan;
   },
 
@@ -581,7 +589,20 @@ const Engine = {
       if(i>=0){ const [w]=liste.splice(i,1); w.datum=ziel;
         (Store.db.zusatz[ziel]=Store.db.zusatz[ziel]||[]).push(w); }
     } else {
-      this.setzeEingriff(a.ursprung||datum, a.key, {verschobenNach:ziel});
+      /* Der Eingriff wandert MIT dem Auftrag auf den Zieltag – sonst findet
+         Engine.overlay() ihn dort nicht mehr und Menge, Notiz und Priorität
+         gingen beim Verschieben verloren. */
+      let daten={}, urspruenglich=a.ursprung||datum;
+      Object.values(Store.db.eingriffe).forEach(keys=>{
+        const e=keys[a.key]; if(!e) return;
+        if(e.verschobenVon) urspruenglich=e.verschobenVon;
+        daten=Object.assign(daten, e);
+        delete keys[a.key];
+      });
+      if(ziel===urspruenglich){ delete daten.verschobenNach; delete daten.verschobenVon; }
+      else { daten.verschobenNach=ziel; daten.verschobenVon=urspruenglich; }
+      if(Object.keys(daten).length) this.setzeEingriff(ziel, a.key, daten);
+      else Store.mark();
     }
     this.planNeu();
     return {ok:true, ziel};

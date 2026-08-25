@@ -328,7 +328,8 @@ const Admin = {
       const w=liste.find(x=>x.id===a.id);
       if(w) Object.assign(w, daten);
     } else {
-      Engine.setzeEingriff(a.ursprung||a.datum, a.key, daten);
+      /* unter dem Tag ablegen, an dem der Auftrag steht – dort liest overlay() */
+      Engine.setzeEingriff(a.datum, a.key, daten);
     }
     if(Engine.tagesPlan(a.datum).freigegeben) Engine.tagesPlan(a.datum).geaendertNachFreigabe=true;
     Store.changed('plan'); Engine.planNeu();
@@ -386,7 +387,7 @@ const Admin = {
       Store.db.zusatz[a.datum]=(Store.db.zusatz[a.datum]||[]).filter(x=>x.id!==id);
       Store.mark();
     } else {
-      Engine.setzeEingriff(a.ursprung||a.datum, a.key, {entfernt:true});
+      Engine.setzeEingriff(a.datum, a.key, {entfernt:true});
     }
     Engine.planNeu(); this.render();
     toast('Auftrag entfernt — er kommt beim Neurechnen nicht zurück');

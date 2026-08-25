@@ -164,9 +164,10 @@ pausiert, pausiertBis, letzteBewaesserung}`
 die Eingriffe. `ursprung` ist der Tag, für den der Auftrag erzeugt wurde (kann von `datum`
 abweichen, wenn er verschoben wurde).
 
-**Eingriff** — `{entfernt?, verschobenNach?, zielMm?, angepasstMm?, anpassungAngenommen?,
-prioritaet?, notiz?}`. Wird in `Engine.overlay()` auf den frisch erzeugten Auftrag gelegt.
-Alte Eingriffe räumt `Engine.eingriffeAufraeumen()` weg.
+**Eingriff** — `{entfernt?, verschobenVon?, verschobenNach?, zielMm?, angepasstMm?,
+anpassungAngenommen?, prioritaet?, notiz?}`, abgelegt unter dem **Tag, an dem der Auftrag
+steht** (nicht unter seinem Ursprungstag). `Engine.overlay()` legt ihn auf den frisch
+erzeugten Auftrag; `Engine.eingriffeAufraeumen()` räumt Altes weg.
 
 **JournalEintrag** — wie bisher, zusätzlich `quelle:'app'` für Einträge des Wassermanns.
 `feldJournal` ist der historische Name aus der Excel; die Zuordnung läuft über
@@ -227,7 +228,12 @@ Fällig ab Defizit ≥ Regelmenge.
 Nur-Lese-Tag zurück, es wird nichts in `Store.db.plan` angelegt.
 
 `verschiebe(datum, id, ±1)` schreibt einen Eingriff statt zu kopieren und lehnt Ziele
-ausserhalb des Horizonts ab.
+ausserhalb des Horizonts ab. Der Eingriff wandert dabei **mit** auf den Zieltag
+(`{verschobenVon, verschobenNach, …}`), damit `overlay()` ihn dort wiederfindet.
+Vor der Tagesschleife wird daraus abgeleitet:
+`sperre[key]` (nach vorne geschoben → bis zum Zieltag gesperrt) und
+`vorziehen[key]` (nach hinten gezogen → am Zieltag schon ab halbem Defizit fällig).
+So bleibt es auch nach mehrfachem Verschieben genau ein Auftrag.
 
 ### 5.4 Regen & effektive Menge
 `regenEmpfehlung(auftrag, regenMm)` → deckt Regen ≥70 % der Zielmenge, entfällt der Auftrag.

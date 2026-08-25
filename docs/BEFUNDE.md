@@ -119,7 +119,7 @@ Ergebnis: heute 1 ×, morgen 1 ×  →  Feld+Kultur zweimal im Plan.
 Rückwärts (auf den Vortag) tritt der Fehler nicht auf, weil der Zieltag zuerst
 verarbeitet wird — das Verhalten hängt also an der Schleifenrichtung.
 
-> **Behoben.** `verschiebe()` schreibt einen Eingriff, statt zu kopieren — der Quelltag erzeugt den Auftrag nicht neu. Ziele ausserhalb des Horizonts werden abgelehnt.
+> **Behoben.** `verschiebe()` schreibt einen Eingriff, statt zu kopieren. Der Eingriff wandert mit auf den Zieltag; daraus wird vor der Tagesschleife eine Sperre (nach vorne) bzw. ein Vorziehen (nach hinten) abgeleitet. Auch nach mehrfachem Hin- und Herschieben bleibt es genau ein Auftrag, und Menge, Notiz und Priorität wandern mit. Ziele ausserhalb des Horizonts werden abgelehnt.
 
 ### A6 · [P1] `aktivePhase()` rechnet immer mit heute ✅ verifiziert
 ```js
