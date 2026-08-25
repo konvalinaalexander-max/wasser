@@ -13,7 +13,7 @@ SRC  = os.path.join(ROOT, 'src')
 DATA = os.path.join(ROOT, 'data')
 OUT  = os.path.join(ROOT, 'build', 'wasserplan.html')
 
-DATA_KEYS = ['katalog', 'journal', 'kulturen', 'regeln', 'gruppen']
+DATA_KEYS = ['katalog', 'journal', 'kulturen', 'regeln', 'gruppen', 'modell']
 
 
 def build_data():

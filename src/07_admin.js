@@ -248,8 +248,10 @@ const Admin = {
 
   auftragCard(a,datum){
     const f=Store.feld(a.feldId), st=Store.standort(a.standortId), k=a.kulturId?Store.kultur(a.kulturId):null;
-    const eff=Engine.effektivMm(a), dauer=Engine.effektivDauer(a);
-    const spr=Engine.sprenklerFuer(a.schiffIds);
+    const eff=Engine.effektivMm(a);
+    const gang=Engine.gangFuer(a.schiffIds, eff);
+    const dauer=Engine.effektivDauer(a);
+    const spr=W.wert(gang.sprenkler);
     const hatAnpassung = a.angepasstMm!=null && a.angepasstMm!==a.zielMm;
     const row=el('div','auftrag');
     const bd=el('div','abody prio-'+a.prioritaet);
@@ -284,14 +286,20 @@ const Admin = {
       </div>`:''}
       <div class="abig">
         <div class="kv"><b>${eff===0?'entfällt':eff+' mm'}</b><span>${hatAnpassung&&a.anpassungAngenommen?'angepasst':'Zielmenge'}</span></div>
-        <div class="kv"><b>${dauer?hhmm(dauer):'–'}</b><span>Dauer</span></div>
-        ${spr.kreis?`<div class="kv"><b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>Sprenkler</span></div>`:''}
+        <div class="kv" title="${esc(W.text(gang.dauerMin, x=>hhmm(x)))}">
+          <b>${dauer?hhmm(dauer):'–'}</b><span>Dauer ${W.zeichen(gang.dauerMin)}</span></div>
+        ${spr&&spr.kreis?`<div class="kv" title="${esc(W.HERKUNFT[gang.sprenkler.quelle]||'')}">
+          <b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>Sprenkler</span></div>`:''}
+        ${gang.zielM3?`<div class="kv"><b>${Math.round(gang.zielM3)} m³</b><span>Wasser</span></div>`:''}
         ${a.ueberfaellig>0?`<div class="kv"><b style="color:var(--rust)">+${a.ueberfaellig} T</b><span>überfällig</span></div>`:''}
         ${a.letzteBew?`<div class="kv"><b>${D.diff(a.letzteBew,datum)} T</b><span>seit letzter Bew.</span></div>`:''}
       </div>
       <div class="ameta">
         ${a.prioritaet!=='normal'?`<span class="chip ${a.prioritaet==='hoch'?'r':''}">Priorität ${esc(a.prioritaet)}</span>`:''}
-        ${a.dauerQuelle==='global'||a.dauerQuelle==='keine'?'<span class="chip a">Dauer geschätzt</span>':''}
+        ${W.stufe(gang.dauerMin)==='keine'?'<span class="chip r">Dauer nicht berechenbar — Fläche fehlt</span>':''}
+        ${['schwach','mittel'].includes(W.stufe(gang.dauerMin))
+          ?`<span class="chip a" title="${esc(W.text(gang.dauerMin, x=>hhmm(x)))}">Dauer ${
+            W.stufe(gang.dauerMin)==='schwach'?'unsicher':'mittel sicher'}</span>`:''}
         ${a.geschaetzt?'<span class="chip a">Fälligkeit geschätzt — keine Historie</span>':''}
         ${a.quelle==='manuell'?'<span class="chip b">manuell</span>':''}
         ${a.verschoben?'<span class="chip">verschoben</span>':''}

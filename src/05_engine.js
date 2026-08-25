@@ -62,103 +62,143 @@ const Engine = {
     return feld.name;
   },
 
-  /* ---- Erfahrungswerte: mm pro Stunde je Schiff ----------------
-     Normalisiert auf einzelne Schiffe, damit auch Kombinationen
-     berechenbar sind, die es historisch nie exakt gab.
+  /* ---- Erfahrungswerte ------------------------------------------
+     Tragende Grösse ist der DURCHFLUSS je Sprenkler (m³/h), nicht mm/h.
+     Begründung in docs/modell.md, H2: mm/h entsteht aus drei Messungen und
+     einer Wurfweiten-Annahme und erbt deren Fehler; gemessen werden nur
+     Menge und Zeit. Zeitlich getrennt geprüft sinkt der Median-Fehler der
+     Dauerprognose von 28 auf 12 Minuten, der Anteil innerhalb ±30 % steigt
+     von 64 auf 89 %.
 
-     mm bezieht sich auf die BEREGNETE Fläche, nicht auf das ganze Feld:
-       beregnete Fläche = Kreisregner × Breite × Abstand
-                        + Sektorregner × Breite × halber Abstand
-     Diese Definition gilt in der GESAMTEN App (auch in der Journal-Ansicht),
-     sonst widersprechen sich Plan und Kontrollzahlen.
-
-     Messung am Journal: die Rate liegt bei 1, 2, 3 und 4 gleichzeitig
-     bewässerten Schiffen konstant bei rund 4,95 mm/h – der Betrieb legt pro
-     Schiff etwa gleich viele Sprenkler und die Pumpe hält mit. Die Dauer
-     hängt daher an der Zielmenge, nicht an der Gruppengrösse; was mit der
-     Gruppe wächst, ist die nötige SPRENKLERZAHL (siehe sprenklerFuer).    */
+     Die Schätzung je Schiff wird gedämpft (Shrinkage, H4): nur rund ein
+     Viertel der Streuung geht auf echte Schiffunterschiede zurück, der Rest
+     ist Rauschen zwischen zwei Gängen. Je weniger Gänge ein Schiff hat, desto
+     stärker zieht der Schätzer Richtung Feld- und Betriebswert.         */
   _refCache:null,
+
+  modell(){ return Store.db.modell || {}; },
+
+  /* Rollomat: fahrbarer Regner, andere Flächen- und Zeitlogik.
+     Gehört nicht in die Erfahrungswerte der Standregner (Audit 5b). */
+  istRollomat(e){
+    return /rolo/i.test(String(e.schiffRoh||'')) || /rolo/i.test(String(e.bemerkung||''));
+  },
+
+  /* Fläche einer Schiffgruppe in m², mit Herkunft */
+  flaecheFuer(schiffIds){
+    let m2=0, fehlt=0;
+    (schiffIds||[]).forEach(id=>{
+      const i=Store.db._sch[id]; if(!i){ fehlt++; return; }
+      const f=Store.schiffFlaecheM2(i.schiff, i.feld);
+      if(f) m2+=f; else fehlt++;
+    });
+    if(!m2) return W.mk(null,'keine');
+    const eigen=(schiffIds||[]).every(id=>{
+      const i=Store.db._sch[id]; return i && (i.schiff.aren || (i.schiff.laengeM&&i.schiff.breiteM));
+    });
+    return W.mk(m2, fehlt ? 'annahme' : (eigen ? 'messung' : 'annahme'), {n:null});
+  },
+
+  /* Beregnete Fläche der alten Betriebsformel – nur noch für den Vergleich
+     und den umschaltbaren mm-Bezug (H1: als Rechengrösse aufgegeben). */
   beregneteFlaeche(kreis, sektor){
     const s = Store.db.einstellungen.sprenkler || {breite:18, abstandKreis:23, abstandSektor:11.5};
     return (kreis||0)*s.breite*s.abstandKreis + (sektor||0)*s.breite*s.abstandSektor;
   },
-  /* mm eines Journaleintrags – die eine gültige Definition */
-  mmVonEintrag(e){
-    if(!e || !e.m3) return null;
-    const fl=this.beregneteFlaeche(e.kreisregner, e.sektorregner);
-    return fl ? e.m3*1000/fl : null;
+
+  /* mm eines Journaleintrags — beide Definitionen, plus die eingestellte */
+  mmBeide(e){
+    if(!e || !e.m3) return {flaeche:null, beregnet:null};
+    const bf=this.beregneteFlaeche(e.kreisregner, e.sektorregner);
+    const f=this.feldFuerJournal(e.feldJournal);
+    let kf=null;
+    if(f){
+      const tr=f.schiffe.filter(s=>(e.schiffe||[]).includes(String(s.nummer)));
+      kf=(tr.length?tr:[]).reduce((a,s)=>a+(Store.schiffFlaecheM2(s,f)||0),0)||null;
+    }
+    return { flaeche: kf ? U.m3NachMm(e.m3, kf) : null,
+             beregnet: bf ? U.m3NachMm(e.m3, bf) : null };
   },
+  mmVonEintrag(e){
+    const b=this.mmBeide(e);
+    return Store.db.einstellungen.mmBezug==='beregnet' ? b.beregnet : (b.flaeche ?? b.beregnet);
+  },
+
   refWerte(){
     if(this._refCache) return this._refCache;
-    const per={}, feldAgg={}, dichte={}; let alle=[];
-    let unzuordenbar=0, ohneRegner=0, verworfen=0;
+    const M=this.modell();
+    const proSchiff={}, proFeld={}; const alle=[];
+    let unzuordenbar=0, ohneRegner=0, verworfen=0, rollomat=0;
     Store.db.journal.forEach(e=>{
+      if(this.istRollomat(e)){ rollomat++; return; }
       if(!e.m3 || !e.dauerMin || e.dauerMin<5) return;
       const f = this.feldFuerJournal(e.feldJournal); if(!f) return;
-      const flaeche = this.beregneteFlaeche(e.kreisregner, e.sektorregner);
-      if(!flaeche){ ohneRegner++; return; }               // ohne Regnerangabe nicht rechenbar
-      const stunden = e.dauerMin/60;
-      const mm  = e.m3*1000/flaeche;
-      const mmH = mm/stunden;
-      if(!isFinite(mmH) || mmH<=0 || mmH>40){ verworfen++; return; }
-      const betroffen = f.schiffe.filter(s=> e.schiffe.includes(String(s.nummer)));
-      /* Kein Treffer heisst: die Schiffnummern im Journal passen nicht zum Plan.
-         Solche Einträge zählen nur zum Feld- und Betriebsschnitt, nicht zu einzelnen
-         Schiffen – sonst verwässern sie jeden Schiffwert (früherer Befund A15). */
+      const regner = (e.kreisregner||0)+(e.sektorregner||0);
+      if(!regner){ ohneRegner++; return; }
+      const q = e.m3/U.minNachH(e.dauerMin)/regner;         // m³/h je Sprenkler
+      /* Physikalische Schranke statt selbstberechnetem Schwellenwert:
+         ein Feldregner bei 4–5 bar liefert 1–3 m³/h. */
+      if(!isFinite(q) || q<0.5 || q>5){ verworfen++; return; }
+      const betroffen = f.schiffe.filter(s=> (e.schiffe||[]).includes(String(s.nummer)));
       if(!betroffen.length) unzuordenbar++;
-      const regner=(e.kreisregner||0)+(e.sektorregner||0);
       betroffen.forEach(s=>{
-        /* Die Regnerzahl im Eintrag gilt für die GANZE Gruppe – der Anteil je Schiff
-           ist das, was sich später wieder aufsummieren lässt. */
-        (per[s.id]=per[s.id]||[]).push({mmH, datum:e.datum,
+        (proSchiff[s.id]=proSchiff[s.id]||[]).push({q, datum:e.datum,
           kreis: e.kreisregner!=null ? e.kreisregner/betroffen.length : null,
           sektor: e.sektorregner!=null ? e.sektorregner/betroffen.length : null});
-        const fl=Store.schiffFlaecheM2(s,f);
-        if(fl && regner && betroffen.length)
-          (dichte[s.id]=dichte[s.id]||[]).push(regner/betroffen.length/(fl/1000));   // Regner je 1000 m²
       });
-      (feldAgg[f.id]=feldAgg[f.id]||[]).push(mmH);
-      alle.push(mmH);
+      (proFeld[f.id]=proFeld[f.id]||[]).push(q);
+      alle.push(q);
     });
     const med = a => { if(!a||!a.length) return null; const b=[...a].sort((x,y)=>x-y);
       const m=Math.floor(b.length/2); return b.length%2?b[m]:(b[m-1]+b[m])/2; };
-    const out={ schiff:{}, feld:{}, dichte:{}, global: med(alle), n:alle.length,
-                unzuordenbar, ohneRegner, verworfen,
-                dichteGlobal: med(Object.values(dichte).flat()) };
-    Object.entries(per).forEach(([k,v])=>{
+    const out={ schiff:{}, feld:{}, global: med(alle), n:alle.length,
+                unzuordenbar, ohneRegner, verworfen, rollomat };
+    Object.entries(proSchiff).forEach(([k,v])=>{
       v.sort((a,b)=> a.datum<b.datum?1:(a.datum>b.datum?-1:0));
-      const use=v.slice(0,8);                         // Median über die letzten 8 – glättet Ausreisser
-      out.schiff[k]={ mmH: med(use.map(x=>x.mmH)), n:v.length,
+      const use=v.slice(0,8);                     // H6: ungewichtetes Fenster, keine Zeitgewichtung
+      out.schiff[k]={ q: med(use.map(x=>x.q)), n:v.length,
         kreis:  med(use.map(x=>x.kreis ).filter(x=>x!=null)),
         sektor: med(use.map(x=>x.sektor).filter(x=>x!=null)) };
     });
-    Object.entries(feldAgg).forEach(([k,v])=> out.feld[k]=med(v));
-    Object.entries(dichte).forEach(([k,v])=> out.dichte[k]=med(v));
+    Object.entries(proFeld).forEach(([k,v])=> out.feld[k]={q:med(v), n:v.length});
     this._refCache=out; return out;
   },
   clearRef(){ this._refCache=null; },
 
-  /* Dauer in Minuten für Ziel-mm auf einer Schiff-Gruppe */
-  dauerFuer(schiffIds, zielMm){
-    const R=this.refWerte(); const raten=[];
-    let quelle='global';
+  /* Durchfluss je Sprenkler für eine Schiffgruppe, mit Herkunft und Streuung.
+     Shrinkage: Gewicht des Schiffwerts = n / (n + λ), λ aus der Varianzzerlegung. */
+  qFuerSchiffe(schiffIds){
+    const R=this.refWerte(), M=this.modell();
+    const lam = M.shrinkageLambda ?? 2.8;
+    const sdInnen = M.sdInnerhalbSchiff ?? 0.334;
+    const werte=[];
     (schiffIds||[]).forEach(id=>{
-      const r=R.schiff[id];
-      if(r&&r.mmH){ raten.push(r.mmH); quelle='schiff'; }
-      else { const f=Store.db._sch[id]?.feld; const fr=f&&R.feld[f.id];
-             if(fr){ raten.push(fr); if(quelle!=='schiff') quelle='feld'; } }
+      const info=Store.db._sch[id];
+      const rs=R.schiff[id];
+      const rf=info && R.feld[info.feld.id];
+      const basis = (rf&&rf.q) ? {q:rf.q, quelle:'feld', n:rf.n} :
+                    (R.global ? {q:R.global, quelle:'betrieb', n:R.n} : null);
+      if(rs && rs.q){
+        const gew = rs.n/(rs.n+lam);
+        const q = basis ? gew*rs.q + (1-gew)*basis.q : rs.q;
+        werte.push({q, quelle: gew>0.5?'schiff':(basis?basis.quelle:'schiff'), n:rs.n});
+      } else if(basis){
+        werte.push({q:basis.q, quelle:basis.quelle, n:basis.n});
+      }
     });
-    const rate = raten.length ? raten.reduce((a,b)=>a+b,0)/raten.length : R.global;
-    if(!rate || !zielMm) return {min:null, rate:rate||null, quelle:'keine'};
-    return { min: Math.round(zielMm/rate*60), rate, quelle };
+    if(!werte.length) return W.mk(null,'keine');
+    const q = werte.reduce((a,b)=>a+b.q,0)/werte.length;
+    const nMin = Math.min(...werte.map(x=>x.n||0));
+    const quelle = werte.map(x=>x.quelle).sort((a,b)=>W.RANG[b]-W.RANG[a])[0];
+    /* Streuung des gedämpften Schätzers: sd innerhalb / √(n + λ) */
+    const sd = sdInnen/Math.sqrt(Math.max(1, nMin + lam));
+    return W.mk(q, quelle, {n:nMin, sd});
   },
 
-  /* Wie viele Sprenkler braucht diese Gruppe? Das ist die Grösse, die mit der
-     Fläche wächst – und die dem Wassermann bisher nirgends gesagt wurde. */
+  /* Empfohlene Sprenklerzahl — additiv je Schiff (H5) */
   sprenklerFuer(schiffIds){
-    const R=this.refWerte();
-    let kreis=0, sektor=0, flaeche=0;
-    let ausHistorie=false, hochgerechnet=false;
+    const R=this.refWerte(), M=this.modell();
+    let kreis=0, sektor=0, flaeche=0, ausHistorie=false, geschaetzt=false, nMin=null;
     (schiffIds||[]).forEach(id=>{
       const info=Store.db._sch[id]; if(!info) return;
       const fl=Store.schiffFlaecheM2(info.schiff, info.feld)||0;
@@ -166,17 +206,59 @@ const Engine = {
       const r=R.schiff[id];
       if(r && (r.kreis!=null || r.sektor!=null)){
         kreis+=r.kreis||0; sektor+=r.sektor||0; ausHistorie=true;
-      } else {
-        const d = R.dichte[id] ?? R.dichteGlobal;
-        if(fl && d){ kreis += d*fl/1000; hochgerechnet=true; }
+        nMin = nMin==null?r.n:Math.min(nMin,r.n);
+      } else if(fl){
+        /* keine Historie: aus der Fläche und der gefitteten Flächenwirkung je
+           Kreisregner hochrechnen — ausdrücklich eine Annahme, kein Messwert */
+        const je = M._h1_flaecheJeKreisregnerM2_gefittet || 446;
+        kreis += fl/je; geschaetzt=true;
       }
     });
-    if(!ausHistorie && !hochgerechnet)
-      return {kreis:null, sektor:null, quelle:'keine', flaecheM2:Math.round(flaeche)||null};
-    return { kreis: Math.max(1, Math.round(kreis)),
-             sektor: Math.round(sektor)||null,
-             quelle: hochgerechnet ? (ausHistorie?'gemischt':'geschaetzt') : 'historie',
-             flaecheM2: Math.round(flaeche) };
+    if(!kreis && !sektor) return W.mk(null,'keine');
+    const wert={kreis:Math.max(1,Math.round(kreis)), sektor:Math.round(sektor)||null,
+                gesamt:Math.max(1,Math.round(kreis+sektor)), flaecheM2:Math.round(flaeche)};
+    return W.mk(wert, geschaetzt ? (ausHistorie?'feld':'annahme') : 'schiff', {n:nMin});
+  },
+
+  /* ---- Ein Gang: Fläche → Wassermenge → Dauer -------------------
+     Kein Zirkelschluss mehr: die Zielmenge bezieht sich auf die Kulturfläche
+     (fest), die Sprenklerzahl bestimmt nur, wie schnell sie zusammenkommt. */
+  gangFuer(schiffIds, zielMm, sprenklerZahl){
+    const M=this.modell();
+    const fl=this.flaecheFuer(schiffIds);
+    const spr=this.sprenklerFuer(schiffIds);
+    const n = sprenklerZahl || (W.wert(spr) ? W.wert(spr).gesamt : null);
+    const q = this.qFuerSchiffe(schiffIds);
+
+    let zielM3=null, flaecheQuelle=fl;
+    if(Store.db.einstellungen.mmBezug==='beregnet'){
+      const s=W.wert(spr);
+      const bf=s ? this.beregneteFlaeche(s.kreis, s.sektor) : null;
+      zielM3 = bf ? U.mmNachM3(zielMm, bf) : null;
+      flaecheQuelle = W.mk(bf, 'annahme');
+    } else {
+      zielM3 = U.mmNachM3(zielMm, W.wert(fl));
+    }
+    if(zielM3==null || !n || W.wert(q)==null)
+      return {flaecheM2:fl, zielM3:null, sprenkler:spr, qM3h:null,
+              dauerMin:W.mk(null, W.wert(fl)==null?'keine':'keine')};
+
+    const qGesamt = W.wert(q)*n;
+    const dauer = U.dauerMin(zielM3, qGesamt);
+    /* Unsicherheit: die Dauer ist umgekehrt proportional zum Durchfluss,
+       die relative Streuung überträgt sich also direkt. */
+    const rel = W.relSd(q);
+    const w = W.ableiten(dauer, [fl, q, spr],
+                         {sd: rel!=null ? dauer*rel : null, n:q.n});
+    return {flaecheM2:flaecheQuelle, zielM3, sprenkler:spr,
+            qM3h:W.mk(qGesamt, q.quelle, {n:q.n}), dauerMin:w};
+  },
+
+  /* Kompatible Kurzform – liefert weiterhin {min, quelle} und zusätzlich den Wert mit Herkunft */
+  dauerFuer(schiffIds, zielMm){
+    const g=this.gangFuer(schiffIds, zielMm);
+    return { min: W.wert(g.dauerMin), quelle: g.dauerMin.quelle==='keine'?'keine':g.dauerMin.quelle,
+             w: g.dauerMin, gang: g };
   },
 
   /* letzte Bewässerung eines Schiffs (aus Journal + neuen Einträgen) */

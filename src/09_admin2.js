@@ -585,13 +585,15 @@ Object.assign(Admin, {
     const info=el('div','infobox');
     info.innerHTML=`<b>Erfahrungswerte</b> aus ${Store.db.journal.length} Einträgen ·
       ${R.n} verwertbar · ${Object.keys(R.schiff).length} Schiffe mit eigenen Werten ·
-      Betriebsschnitt ${R.global?R.global.toFixed(1)+' mm/h':'–'}.
+      Betriebsschnitt <b>${R.global?R.global.toFixed(2)+' m³/h je Sprenkler':'–'}</b>.
       <div class="tiny" style="margin-top:6px;color:var(--ink-2)">
-        mm bezieht sich überall auf die <b>beregnete Fläche</b> (Sprenklerzahl × Raster) —
-        dieselbe Rechnung wie in der Planung.
-        ${R.ohneRegner?`${R.ohneRegner} Einträge ohne Regnerangabe und `:''}${R.unzuordenbar
-          ? `${R.unzuordenbar} Einträge mit unbekannten Schiffnummern fliessen nur in den Feld- und
-             Betriebsschnitt ein, nicht in einzelne Schiffwerte.`:'alle Schiffnummern liessen sich zuordnen.'}</div>`;
+        Die Dauer folgt aus <b>Wassermenge ÷ Durchfluss</b>. Die Spalten „mm Fläche" und „mm alt"
+        zeigen beide Definitionen; fett ist die eingestellte
+        (${Store.db.einstellungen.mmBezug==='flaeche'?'Kulturfläche':'beregnete Fläche'}).
+        ${R.rollomat?`${R.rollomat} Rollomat-Gänge und `:''}${R.verworfen} unphysikalische Gänge
+        bleiben aussen vor.${R.unzuordenbar
+          ? ` ${R.unzuordenbar} Einträge mit unbekannten Schiffnummern fliessen nur in den Feld- und
+             Betriebsschnitt ein, nicht in einzelne Schiffwerte.`:''}</div>`;
     p.appendChild(info);
 
     const f=el('div','row wrap'); f.style.marginBottom='11px';
@@ -611,14 +613,19 @@ Object.assign(Admin, {
         ? `${treffer.length} Treffer, die ${LIMIT} neuesten angezeigt (von ${Store.db.journal.length})`
         : `${treffer.length} von ${Store.db.journal.length} Einträgen`;
       box.innerHTML=`<table class="tb"><thead><tr><th>Datum</th><th>Feld</th><th>Schiffe</th><th>Kultur</th>
-        <th>Dauer</th><th>m³</th><th>mm</th><th>Regner</th><th></th></tr></thead><tbody>${rows.map(e=>{
+        <th>Dauer</th><th>m³</th><th>m³/h</th><th>mm Fläche</th><th>mm alt</th><th>Regner</th><th></th></tr></thead><tbody>${rows.map(e=>{
           const f2=Engine.feldFuerJournal(e.feldJournal);
-          const mm=Engine.mmVonEintrag(e);
+          const mm=Engine.mmBeide(e);
+          const qq=(e.m3&&e.dauerMin)?e.m3/U.minNachH(e.dauerMin):null;
           return `<tr><td>${e.datum}</td><td>${esc(e.feldJournal)}${f2?'':' <span class="chip r tiny">?</span>'}</td>
             <td>${esc(e.schiffRoh||'–')}</td><td>${esc(e.kultur||'–')}</td>
             <td>${e.dauerMin?hhmm(e.dauerMin):'–'}${e.ueberNacht?' <span class="chip a">Nacht</span>':''}</td>
-            <td>${e.m3??'–'}</td><td>${mm?mm.toFixed(1):'–'}</td>
-            <td class="dim">${[e.kreisregner?e.kreisregner+'K':'',e.sektorregner?e.sektorregner+'S':''].filter(Boolean).join(' ')||'–'}</td>
+            <td>${e.m3??'–'}</td>
+            <td class="dim">${qq?qq.toFixed(1):'–'}</td>
+            <td${Store.db.einstellungen.mmBezug==='flaeche'?' style="font-weight:650"':' class="dim"'}>${mm.flaeche?mm.flaeche.toFixed(1):'–'}</td>
+            <td${Store.db.einstellungen.mmBezug==='beregnet'?' style="font-weight:650"':' class="dim"'}>${mm.beregnet?mm.beregnet.toFixed(1):'–'}</td>
+            <td class="dim">${[e.kreisregner?e.kreisregner+'K':'',e.sektorregner?e.sektorregner+'S':''].filter(Boolean).join(' ')||'–'}${
+              Engine.istRollomat(e)?' <span class="chip a">Rollomat</span>':''}</td>
             <td>${e.quelle==='app'?`<button class="btn sm ghost" onclick="Admin.journalLoeschen('${e.id}')">✕</button>`:''}</td></tr>`;
         }).join('')}</tbody></table>`;
     };
@@ -669,7 +676,7 @@ Object.assign(Admin, {
   /* ---------------- EINSTELLUNGEN ---------------- */
   vEinst(p){
     const e=Store.db.einstellungen, k=Store.db.journalKapazitaet;
-    const R=Engine.refWerte();
+    const R=Engine.refWerte(), m=Store.db.modell||{};
     const c=el('div','card'); c.style.cssText='padding:16px;max-width:620px';
     c.innerHTML=`
       <div class="sec-title" style="margin-top:0">Betrieb</div>
@@ -697,11 +704,43 @@ Object.assign(Admin, {
           <option value="erfahren" ${e.erfahrungsstufe==='erfahren'?'selected':''}>Erfahren – nur Schiffe, Menge und Dauer</option>
         </select></div>
 
-      <div class="sec-title">Sprenkler-Kennwerte</div>
-      <div class="tiny dim" style="margin-bottom:9px">Aus diesen drei Zahlen entsteht die beregnete Fläche und damit
-        <b>jede</b> mm- und Dauerangabe der App. Sie stammen aus der alten Excel-Formel des Betriebs
-        und gehören ersetzt, sobald echte Feldmasse vorliegen.
-        Aktueller Betriebsschnitt: <b>${R.global?R.global.toFixed(2)+' mm/h':'–'}</b>.</div>
+      <div class="sec-title">Worauf sich „mm" bezieht</div>
+      <div class="tiny dim" style="margin-bottom:9px">Die wichtigste Einstellung der App — sie entscheidet,
+        was eine Regel wie „15 mm" bedeutet. Beide Zahlen stehen überall nebeneinander,
+        gerechnet und geplant wird mit der gewählten.</div>
+      <div class="field"><select class="inp" id="esMmBezug">
+        <option value="flaeche" ${e.mmBezug==='flaeche'?'selected':''}>Kulturfläche — was auf dem Bestand ankommt</option>
+        <option value="beregnet" ${e.mmBezug==='beregnet'?'selected':''}>Beregnete Fläche — die alte Betriebsformel</option>
+      </select>
+      <div class="tiny dim" style="margin-top:6px">Im Journal unterscheiden sich die beiden im Median um den
+        Faktor <b>${(m.mmVerhaeltnisAzuB||1.42).toFixed(2)}</b>, je Feld aber sehr verschieden.
+        Eine Umstellung verschiebt Felder gegeneinander — nach dem Wechsel die Regeln prüfen.</div></div>
+
+      <div class="sec-title">Rechenmodell</div>
+      <div class="tiny dim" style="margin-bottom:9px">Die Dauer folgt aus <b>Wassermenge ÷ Durchfluss</b>.
+        Der Durchfluss je Sprenkler ist aus dem Journal geschätzt und wird laufend nachgeführt;
+        die Sprenkler-Kennwerte darunter gehen nur noch in die alte mm-Definition ein.</div>
+      <div class="scrollx" style="margin-bottom:12px"><table class="tb">
+        <thead><tr><th>Grösse</th><th>Wert</th><th>Herkunft</th></tr></thead><tbody>
+        <tr><td>Durchfluss je Sprenkler (Betriebsschnitt)</td>
+            <td><b>${R.global?R.global.toFixed(2)+' m³/h':'–'}</b></td>
+            <td class="dim">${R.n} Gänge aus dem Journal</td></tr>
+        <tr><td>je Kreisregner (gefittet)</td><td>${(m.qJeKreisregner||0).toFixed(2)} m³/h</td>
+            <td class="dim">Kalibrierung H2</td></tr>
+        <tr><td>je Sektorregner (gefittet)</td><td>${(m.qJeSektorregner||0).toFixed(2)} m³/h</td>
+            <td class="dim">Kalibrierung H2</td></tr>
+        <tr><td>Dämpfung dünner Schiffwerte (λ)</td><td>${m.shrinkageLambda??'–'}</td>
+            <td class="dim">aus der Varianzzerlegung, H4</td></tr>
+        <tr><td>Schiffe mit eigenem Wert</td><td>${Object.keys(R.schiff).length} von ${Store.schiffZahl()}</td>
+            <td class="dim">Rest über Feld- und Betriebsschnitt</td></tr>
+        <tr><td>verworfen (unphysikalisch / Rollomat)</td><td>${R.verworfen} / ${R.rollomat}</td>
+            <td class="dim">Durchfluss ausserhalb 0,5–5 m³/h je Sprenkler</td></tr>
+        </tbody></table></div>
+
+      <div class="sec-title">Sprenkler-Kennwerte (alte Formel)</div>
+      <div class="tiny dim" style="margin-bottom:9px">Gehen nur noch in die mm-Definition „beregnete Fläche" ein.
+        Die Kalibrierung hat gezeigt, dass sie die tatsächliche Kulturfläche im Median um 38 %
+        verfehlen — deshalb rechnet die Planung nicht mehr über sie.</div>
       <div class="grid3">
         <div class="field" style="margin:0"><label>Breite (m)</label>
           <input class="inp" id="esSprB" type="number" step="0.5" value="${e.sprenkler.breite}"></div>
@@ -788,6 +827,9 @@ Object.assign(Admin, {
     const b=num($('#esSprB').value), k=num($('#esSprK').value), s=num($('#esSprS').value);
     if(!b||!k||!s||b<=0||k<=0||s<=0){ toast('Die Sprenkler-Kennwerte müssen grösser als 0 sein'); return; }
     e.sprenkler={breite:b, abstandKreis:k, abstandSektor:s};
+    const bezugAlt=e.mmBezug;
+    e.mmBezug=$('#esMmBezug').value;
+    if(bezugAlt!==e.mmBezug) toast('mm-Bezug geändert — bitte die Regeln prüfen');
     Admin.tagOffset=clamp(Admin.tagOffset,0,e.planungsHorizont-1);
     Store.changed('einstellung'); toast('Einstellungen gespeichert'); this.render();
   },

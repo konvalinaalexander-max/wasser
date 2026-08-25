@@ -159,6 +159,86 @@ const hhmm = m => { if(m==null) return '–'; m=Math.round(m); const h=Math.floo
 const nowHM = () => { const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
 const hm2min = s => { if(!s||!/^\d{1,2}:\d{2}$/.test(s)) return null; const [h,m]=s.split(':').map(Number); return h*60+m; };
 
+/* ============================================================
+   EINHEITEN — jede Zahl trägt ihre Einheit im Feldnamen.
+   Konvention: …Mm (Millimeter) · …M3 (Kubikmeter) · …M2 (Quadratmeter)
+   …Aren · …Min (Minuten) · …M3h (Kubikmeter je Stunde) · …M (Meter).
+   Umgerechnet wird ausschliesslich hier — nirgends im Code steht eine 1000.
+   ============================================================ */
+const U = {
+  arenNachM2: a => a==null?null : a*100,
+  m2NachAren: m => m==null?null : m/100,
+  /* Wassertiefe auf einer Fläche: wie viel m³ sind X mm auf Y m²? */
+  mmNachM3: (mm, m2) => (mm==null||!m2) ? null : mm*m2/1000,
+  m3NachMm: (m3, m2) => (m3==null||!m2) ? null : m3*1000/m2,
+  minNachH:  min => min==null?null : min/60,
+  hNachMin:  h   => h==null?null   : h*60,
+  /* Dauer für eine Wassermenge bei gegebenem Durchfluss */
+  dauerMin: (m3, m3h) => (m3==null||!m3h) ? null : m3/m3h*60
+};
+
+/* ============================================================
+   WERT MIT HERKUNFT — jede abgeleitete Zahl weiss, woher sie kommt
+   und wie sicher sie ist. {wert, quelle, n, sd}.
+   Quellen, absteigend nach Verlässlichkeit:
+     messung  gemessen, keine Ableitung
+     schiff   aus der Historie genau dieses Schiffs
+     feld     aus der Historie des Feldes
+     betrieb  Betriebsschnitt
+     annahme  gesetzt oder geschätzt, nicht aus Daten
+     keine    nicht bestimmbar
+   ============================================================ */
+const W = {
+  RANG: {messung:0, schiff:1, feld:2, betrieb:3, annahme:4, keine:5},
+  mk(wert, quelle, opt){
+    return {wert: wert==null?null:wert, quelle: quelle||'keine',
+            n: opt&&opt.n!=null?opt.n:null, sd: opt&&opt.sd!=null?opt.sd:null};
+  },
+  leer(){ return W.mk(null,'keine'); },
+  wert(w){ return (w && typeof w==='object' && 'wert' in w) ? w.wert : (w??null); },
+  /* Herkunft weitergeben: das Ergebnis ist so sicher wie die schwächste Zutat */
+  ableiten(wert, teile, opt){
+    let q='messung';
+    (teile||[]).forEach(t=>{ const tq=(t&&t.quelle)||'keine';
+      if(W.RANG[tq] > W.RANG[q]) q=tq; });
+    const ns=(teile||[]).map(t=>t&&t.n).filter(x=>x!=null);
+    return W.mk(wert, q, Object.assign({n: ns.length?Math.min(...ns):null}, opt||{}));
+  },
+  /* relative Streuung – Grundlage für die Verlässlichkeitsstufe */
+  relSd(w){ const v=W.wert(w); return (w&&w.sd!=null&&v)?Math.abs(w.sd/v):null; },
+  stufe(w){
+    if(!w || W.wert(w)==null) return 'keine';
+    if(w.quelle==='messung') return 'gut';
+    if(w.quelle==='annahme') return 'schwach';
+    const n=w.n||0, r=W.relSd(w);
+    if(n>=8 && (r==null || r<=0.30)) return 'gut';
+    if(n>=3) return 'mittel';
+    if(n>=1) return 'schwach';
+    return w.quelle==='betrieb' ? 'schwach' : 'keine';
+  },
+  ZEICHEN: {gut:'●●●', mittel:'●●○', schwach:'●○○', keine:'○○○'},
+  zeichen(w){ return W.ZEICHEN[W.stufe(w)]; },
+  HERKUNFT: {messung:'gemessen', schiff:'aus der Historie dieses Schiffs',
+             feld:'aus der Historie des Feldes', betrieb:'Betriebsschnitt',
+             annahme:'geschätzt', keine:'nicht bestimmbar'},
+  /* Lange Form für den Produktionsleiter: „2 h 34 · ± 25 min · aus 6 Gängen" */
+  text(w, fmt){
+    if(!w || W.wert(w)==null) return '–';
+    const f = fmt || (x=>String(Math.round(x)));
+    let s = f(W.wert(w));
+    if(w.sd!=null && w.sd>0) s += ' ± ' + f(w.sd);
+    const zus=[];
+    if(w.n) zus.push(w.n===1?'1 Gang':w.n+' Gänge');
+    if(w.quelle && w.quelle!=='schiff' && w.quelle!=='messung') zus.push(W.HERKUNFT[w.quelle]);
+    return zus.length ? s+' · '+zus.join(' · ') : s;
+  },
+  /* Kurze Form für den Wassermann: Zahl plus Verlässlichkeitszeichen */
+  kurz(w, fmt){
+    if(!w || W.wert(w)==null) return '–';
+    return (fmt?fmt(W.wert(w)):String(Math.round(W.wert(w))));
+  }
+};
+
 /* --- Geometrie --- */
 function polyArea(p){ if(!p||p.length<3) return 0;
   let a=0; for(let i=0;i<p.length;i++){const [x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length]; a+=x1*y2-x2*y1;} return Math.abs(a/2); }
@@ -212,6 +292,10 @@ const Store = {
       setupJournalGeklaert: [],          // Standort-IDs, deren Journal-Zuordnung erledigt ist
       regenGefragtAm: null,
       sprenkler: {breite:18, abstandKreis:23, abstandSektor:11.5},
+      /* Worauf sich „mm" bezieht (Kalibrierung H3):
+         'flaeche'  = auf die Kulturfläche — was auf dem Bestand ankommt (Vorgabe)
+         'beregnet' = auf die beregnete Fläche — die alte Betriebsformel */
+      mmBezug: 'flaeche',
       journalMap: {}
     };
   },
@@ -230,7 +314,8 @@ const Store = {
       journal:   seed.journal.eintraege,
       journalProbleme: seed.journal.probleme,
       journalKapazitaet: seed.journal.kapazitaet,
-      gruppen:   seed.gruppen || []
+      gruppen:   seed.gruppen || [],
+      modell:    seed.modell || null
     });
   },
 
@@ -266,6 +351,18 @@ const Store = {
     d.laufend = Array.isArray(d.laufend)?d.laufend:[];
     d.gruppen = Array.isArray(d.gruppen)?d.gruppen:[];
     d.meldungen = Array.isArray(d.meldungen)?d.meldungen:[];
+    /* Aus den Daten gefittete Modellparameter (tools/kalibrierung.py).
+       Fehlen sie, rechnet die Engine mit den dokumentierten Rückfallwerten. */
+    d.modell = Object.assign({
+      qJeKreisregner: 1.85,      // m³/h, H2, 90-%-Intervall 1,82–1,87
+      qJeSektorregner: 2.20,     // m³/h, H2, 90-%-Intervall 2,15–2,25
+      qModell: 'linear',         // Sättigung getestet, bringt nichts (H2)
+      shrinkageLambda: 2.8,      // Dämpfung des Schiffwerts (H4)
+      sdInnerhalbSchiff: 0.334,  // m³/h je Sprenkler (H4)
+      mmVerhaeltnisAzuB: 1.415   // beregnete Fläche zu Kulturfläche (H3)
+    }, d.modell || {});
+    if(!['flaeche','beregnet'].includes(d.einstellungen.mmBezug))
+      d.einstellungen.mmBezug='flaeche';
     /* Admin-Eingriffe in den Plan: datum → key → {entfernt, verschobenNach, zielMm, …}
        Sie überleben jede Neuberechnung (siehe Engine.overlay). */
     d.eingriffe = (d.eingriffe && typeof d.eingriffe==='object')?d.eingriffe:{};

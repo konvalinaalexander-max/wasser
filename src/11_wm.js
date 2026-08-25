@@ -128,8 +128,9 @@ const WM = {
   jobCard(a){
     const st=Store.standort(a.standortId), f=Store.feld(a.feldId), k=a.kulturId?Store.kultur(a.kulturId):null;
     const laufend=(Store.db.laufend||[]).some(l=>l.auftragId===a.id&&!l.stopZeit);
+    const gang=Engine.gangFuer(a.schiffIds, Engine.effektivMm(a));
     const dauer=Engine.effektivDauer(a);
-    const spr=this.einfach()?null:Engine.sprenklerFuer(a.schiffIds);
+    const spr=this.einfach()?null:W.wert(gang.sprenkler);
     const satz=this.satzFuer(a);
     const b=el('button','jobcard'+(a.erledigt?' done':'')+(laufend?' running':''));
     b.innerHTML=`
@@ -145,7 +146,7 @@ const WM = {
         a.zeitfenster!=null?' · '+esc(T('zeitfenster'))+' '+a.zeitfenster+':00':''}</div>`:''}
       <div class="jnums">
         <div class="kv"><b>${Engine.effektivMm(a)} mm</b><span>${esc(T('ziel'))}</span></div>
-        <div class="kv"><b>${dauer?hhmm(dauer):'?'}</b><span>${esc(T('dauer'))}</span></div>
+        <div class="kv"><b>${dauer?hhmm(dauer):'?'}</b><span>${esc(T('dauer'))} <span class="sicher">${W.zeichen(gang.dauerMin)}</span></span></div>
         ${spr&&spr.kreis?`<div class="kv"><b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>${esc(T('sprenkler'))}</span></div>`:''}
       </div>
       ${a.notiz?`<div class="warnbox tiny" style="margin:10px 0 0"><b>${esc(T('notizChef'))}:</b> ${esc(a.notiz)}</div>`:''}`;
@@ -172,19 +173,27 @@ const WM = {
     p.appendChild(back);
 
     const dauer=Engine.effektivDauer(a);
+    const gang=Engine.gangFuer(a.schiffIds, Engine.effektivMm(a));
     const R=Engine.dauerFuer(a.schiffIds,Engine.effektivMm(a));
-    const spr=Engine.sprenklerFuer(a.schiffIds);
+    const spr=W.wert(gang.sprenkler)||{};
     const head=el('div','card'); head.style.cssText='padding:16px;margin-top:11px';
     head.innerHTML=`<div class="jnums" style="border:none;padding:0;margin:0">
         <div class="kv"><b>${Engine.effektivMm(a)} mm</b><span>${esc(T('ziel'))}</span></div>
-        <div class="kv"><b>${dauer?hhmm(dauer):'?'}</b><span>${esc(T('empfDauer'))}</span></div>
+        <div class="kv"><b>${dauer?hhmm(dauer):'?'}</b><span>${esc(T('empfDauer'))} <span class="sicher">${W.zeichen(gang.dauerMin)}</span></span></div>
         ${spr.kreis?`<div class="kv"><b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>${esc(T('empfSprenkler'))}</span></div>`:''}
+        ${gang.zielM3?`<div class="kv"><b>${Math.round(gang.zielM3)} m³</b><span>${esc(T('wassermenge'))}</span></div>`:''}
       </div>
       ${a.gaenge?`<div class="tiny dim" style="margin-top:9px">${a.gangNr}/${a.gaenge}${
         a.zeitfenster!=null?' · '+esc(T('zeitfenster'))+' '+a.zeitfenster+':00':''}</div>`:''}
       ${(a.gruppen||[]).length&&!this.einfach()?`<div class="tiny dim" style="margin-top:9px">
         ${esc(T('ueblichZusammen'))}: <b>${esc(a.gruppen.map(g=>g.join(' + ')).join(' · '))}</b></div>`:''}
-      ${R.quelle==='global'||R.quelle==='keine'?`<div class="tiny dim" style="margin-top:9px">${esc(T('keineDaten'))} – ${esc(T('schaetzwert'))}.</div>`:''}
+      ${W.stufe(gang.dauerMin)==='keine'
+        ?`<div class="warnbox tiny" style="margin-top:9px">${esc(T('keineDaten'))}</div>`
+        :(W.stufe(gang.dauerMin)!=='gut'
+          ?`<div class="tiny dim" style="margin-top:9px">${W.zeichen(gang.dauerMin)} ${esc(T('schaetzwert'))}${
+             gang.dauerMin.n?' · '+gang.dauerMin.n+'×':''}</div>`
+          :`<div class="tiny dim" style="margin-top:9px">${W.zeichen(gang.dauerMin)} ${esc(T('ausErfahrung'))}${
+             gang.dauerMin.n?' · '+gang.dauerMin.n+'×':''}</div>`)}
       ${a.notiz?`<div class="warnbox tiny" style="margin-top:11px"><b>${esc(T('notizChef'))}:</b> ${esc(a.notiz)}</div>`:''}`;
     p.appendChild(head);
 
@@ -257,7 +266,7 @@ const WM = {
     const f=Store.feld(a.feldId); if(!f) return;
     const letzteSchiff=this.historieFuer(a.schiffIds)[0]||{};
     const letzteUhr=this.letzterZaehler(a.standortId);
-    const spr=Engine.sprenklerFuer(a.schiffIds);
+    const spr=W.wert(Engine.sprenklerFuer(a.schiffIds))||{};
     const sel=new Set(a.schiffIds);
     openModal(T('starten'),
       `<div class="field"><label>${esc(T('welcheSchiffe'))}</label>
@@ -271,7 +280,7 @@ const WM = {
        <div class="grid2">
          <div class="field"><label>${esc(T('kreisregner'))}</label>
            <input class="inp" id="wmK" type="number" inputmode="numeric"
-             value="${letzteSchiff.kreisregner ?? (spr.quelle!=='keine'?spr.kreis??'':'')}"></div>
+             value="${letzteSchiff.kreisregner ?? (spr.kreis??'')}"></div>
          <div class="field"><label>${esc(T('sektorregner'))}</label>
            <input class="inp" id="wmS" type="number" inputmode="numeric"
              value="${letzteSchiff.sektorregner ?? (spr.sektor??'')}"></div>
@@ -418,11 +427,12 @@ const WM = {
     if(!ids.length){ toast(T('pflicht')); return; }
     const mm=num($('#rcMm').value)||20;
     const r=Engine.dauerFuer(ids,mm);
-    const spr=Engine.sprenklerFuer(ids);
+    const spr=W.wert(Engine.sprenklerFuer(ids))||{};
     $('#rcOut').innerHTML = r.min
-      ? `<div class="okbox" style="margin:0"><div style="font-size:27px;font-weight:750">${hhmm(r.min)}</div>
+      ? `<div class="okbox" style="margin:0"><div style="font-size:27px;font-weight:750">${hhmm(r.min)} <span class="sicher">${W.zeichen(r.w)}</span></div>
          <div class="tiny">${esc(T('fuerMengeAuf', mm, ids.length))}
-         ${r.quelle==='global'||r.quelle==='keine'?' · '+esc(T('keineDaten')):' · '+esc(T('ausErfahrung'))}</div>
+         ${['betrieb','annahme','keine'].includes(r.quelle)?' · '+esc(T('keineDaten')):' · '+esc(T('ausErfahrung'))}
+         ${r.gang&&r.gang.zielM3?' · '+Math.round(r.gang.zielM3)+' m³':''}</div>
          ${spr.kreis?`<div class="tiny" style="margin-top:5px">${esc(T('empfSprenkler'))}: <b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b></div>`:''}</div>`
       : `<div class="warnbox" style="margin:0">${esc(T('keineDaten'))}</div>`;
   },

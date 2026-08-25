@@ -59,9 +59,33 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
     Store.setRegel(fid,'k-salat',{anzahl:1,einheit:'frei',tage:10,mm:30,zeiten:[],phasen:[]});
     Admin.regelBearbeiten(fid,'k-salat'); Admin.regelSpeichern(fid,'k-salat');
     o.freiRegel=Engine.regelIntervall(Store.regel(fid,'k-salat'))===10;
-    // mm-Einheit
-    const e=Store.db.journal.find(x=>x.m3&&x.kreisregner);
-    o.mmDefinition=Math.abs(Engine.mmVonEintrag(e)-(e.m3*1000/Engine.beregneteFlaeche(e.kreisregner,e.sektorregner)))<1e-9;
+    // mm-Bezug: beide Definitionen vorhanden, die eingestellte wird geliefert
+    const e=Store.db.journal.find(x=>x.m3&&x.kreisregner&&Engine.feldFuerJournal(x.feldJournal));
+    const beide=Engine.mmBeide(e);
+    const alt=Store.db.einstellungen.mmBezug;
+    Store.db.einstellungen.mmBezug='beregnet';
+    const mmB=Engine.mmVonEintrag(e);
+    Store.db.einstellungen.mmBezug='flaeche';
+    const mmF=Engine.mmVonEintrag(e);
+    Store.db.einstellungen.mmBezug=alt;
+    o.mmDefinition = beide.flaeche!=null && beide.beregnet!=null
+      && Math.abs(mmB-beide.beregnet)<1e-9 && Math.abs(mmF-beide.flaeche)<1e-9;
+    // Durchflussmodell: Dauer folgt aus Menge und Durchfluss
+    const f9=Store.db.felder.find(x=>x.schiffe.length>=2);
+    const g9=Engine.gangFuer(f9.schiffe.slice(0,2).map(s=>s.id), 15);
+    o.gangKette = g9.zielM3!=null && W.wert(g9.dauerMin)!=null
+      && Math.abs(W.wert(g9.dauerMin) - g9.zielM3/W.wert(g9.qM3h)*60) < 0.5;
+    // Herkunft und Unsicherheit erreichen die Oberflaeche
+    o.herkunft = ['messung','schiff','feld','betrieb','annahme','keine'].includes(g9.dauerMin.quelle)
+      && g9.dauerMin.sd!=null && W.zeichen(g9.dauerMin).length===3;
+    // Shrinkage: duenn belegtes Schiff wird Richtung Feldwert gezogen
+    const R9=Engine.refWerte();
+    const duenn=Object.entries(R9.schiff).filter(([k,v])=>v.n<=2 && v.q);
+    o.shrinkage = duenn.length===0 || duenn.some(([k,v])=>{
+      const q=W.wert(Engine.qFuerSchiffe([k]));
+      const inf=Store.db._sch[k]; const rf=inf&&R9.feld[inf.feld.id];
+      return q!=null && rf && Math.abs(q-rf.q) < Math.abs(v.q-rf.q)+1e-9;
+    });
     // Phantom-Felder
     o.phantomWeg = !Store.db.felder.some(f=>'einzelschiff' in f||'planSeite' in f||'journalName' in f)
       && !('letzteRegenStandorte' in Store.db.einstellungen)
@@ -76,8 +100,8 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
     o.flaeche=Math.round(f5.schiffe.reduce((a,x)=>a+(Store.schiffFlaecheM2(x,f5)||0),0)/100)===f5.gesamtflaecheAren;
     // Sprenkler monoton
     const ids=Store.db.felder.find(f=>f.schiffe.length>=4).schiffe.slice(0,4).map(s=>s.id);
-    const sp=[1,2,3,4].map(n=>Engine.sprenklerFuer(ids.slice(0,n)));
-    o.sprenklerMonoton = sp.every((x,i)=>i===0||x.kreis>=sp[i-1].kreis);
+    const sp=[1,2,3,4].map(n=>W.wert(Engine.sprenklerFuer(ids.slice(0,n))));
+    o.sprenklerMonoton = sp.every((x,i)=>i===0||(x&&sp[i-1]&&x.gesamt>=sp[i-1].gesamt));
     return o;
   });
 
@@ -94,7 +118,10 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
   t('Export→Import-Rundlauf funktioniert', R.rundlauf);
   t('Freigabe überlebt Neuberechnung', R.freigabeBleibt);
   t('„alle n Tage" übersteht den Regel-Editor', R.freiRegel);
-  t('eine einzige mm-Definition', R.mmDefinition);
+  t('beide mm-Definitionen verfügbar und umschaltbar', R.mmDefinition);
+  t('Dauer folgt aus Menge ÷ Durchfluss', R.gangKette);
+  t('Herkunft und Unsicherheit erreichen die Oberfläche', R.herkunft);
+  t('Shrinkage zieht dünn belegte Schiffe Richtung Feldwert', R.shrinkage);
   t('keine Phantom-Felder mehr im Modell', R.phantomWeg);
   t('Bewässerungsgruppen werden genutzt', R.gruppenGenutzt>0, R.gruppenGenutzt);
   t('I18N in allen drei Sprachen vollständig', R.i18nVoll);
