@@ -746,3 +746,125 @@ Startpunkt und kennzeichnet den Auftrag als „Fälligkeit geschätzt".
 ist die richtige Flächenlogik selbst noch unklar (Pflichtenheft §13). „Trüb" liess sich keinem
 Plan zuordnen. Und Phase 2 (Login, Google Sheets, echter E-Mail-Versand) ist unverändert
 konzipiert, aber nicht gebaut.
+
+---
+
+# Nachtrag · Befunde aus dem Datenmodell-Umbau (Phasen 3–5)
+
+Diese Befunde stammen nicht aus der Code-Durchsicht, sondern aus dem statistischen
+Umbau: aus der Kalibrierung, aus dem Backtest und aus dem Bau der Auswertungsansicht.
+Sie sind hier fortgeführt, damit die Liste der gefundenen Fehler an einer Stelle bleibt.
+Ausführlich in `docs/modell.md`, `docs/backtest.md` und `docs/bericht-datenmodell.md`.
+
+## E1 · Zirkuläre Dauerrechnung über mm/h
+
+**Fehler.** `dauerFuer()` rechnete `dauer = zielMm / mmProStunde`. In mm/h steckt bereits
+eine Fläche; aus einer Zielmenge auf derselben Fläche wieder eine Dauer zu rechnen, kürzt
+die Fläche heraus. Die Zahl gab vor, mehr zu wissen, als sie wusste, und war gegen die
+tatsächlich benutzte Fläche blind.
+
+**Behoben.** Die Kette ist jetzt gerichtet: Fläche → Menge → Dauer, über den **Durchfluss
+je Sprenkler** (`Engine.qFuerSchiffe`, `Engine.gangFuer`). Median-Fehler der Dauerprognose
+in der zeitlich getrennten Prüfung von 28 auf 12 Minuten, Anteil innerhalb ±30 % von 64
+auf 89 %. Invariante 16 im Handbuch hält es fest.
+
+## E2 · Einzelwerte aus zwei Gängen wurden wie Messreihen behandelt
+
+**Fehler.** Der Referenzwert eines Schiffs war der rohe Median seiner Gänge — bei zwei
+Gängen also der Mittelwert zweier Zahlen, gleichberechtigt neben einem Wert aus 40.
+
+**Behoben.** Empirical-Bayes-Shrinkage Richtung Feldwert, `gew = n/(n+λ)` mit λ = 2,8 aus
+der Varianzzerlegung. Bei dünner Datenlage (1–3 Gänge) sinkt der Fehler um 17 %, bei guter
+ändert sich nichts. Der Schätzer wird nie schlechter als der rohe.
+
+## E3 · Herkunft eines Werts war unsichtbar
+
+**Fehler.** Eine Dauer aus 40 Messungen und eine aus dem Betriebsschnitt sahen in der
+Oberfläche identisch aus. Der Wassermann konnte nicht erkennen, worauf er sich verlässt.
+
+**Behoben.** `W` — jeder Wert trägt `{wert, quelle, n, sd}`, abgeleitete Werte erben die
+**schlechteste** Herkunft ihrer Bestandteile. Anzeige `●●●` bis `○○○` mit Klartext im
+Tooltip.
+
+## E4 · Einheiten waren aus den Feldnamen nicht erkennbar
+
+**Fehler.** `flaeche`, `dauer`, `menge` — ohne Blick in den Code war nicht zu sagen, ob
+Aren oder m², Minuten oder Stunden gemeint waren. Eine solche Benennung erzeugt früher
+oder später einen Faktor-60- oder Faktor-100-Fehler.
+
+**Behoben.** Einheit steht in der Endung (`…Mm`, `…M3`, `…M2`, `…Aren`, `…Min`, `…M3h`),
+umgerechnet wird ausschliesslich über `U`. Invariante 15.
+
+## E5 · Die Sortierung der Aufträge war schlechter als Zufall
+
+**Fehler.** `reihung()` sortierte nach dem Defizit. Der Backtest zeigt: **177 Treffer von
+850, gegen 262 durch blindes Ziehen aus derselben Liste — 0,68×.** Die Ursache ist ein
+Vorzeichenfehler in der Logik, nicht in der Formel: die Bewässerungsquote **fällt** mit
+steigendem Rückstand (52 % bei Dringlichkeit 1,0–1,5 gegen 16 % über 3). Ein grosses
+Defizit zeigt kein grosses Bedürfnis an, sondern ein Schiff, das aus der Rotation gefallen
+ist. Nach Defizit sortiert standen die Karteileichen oben, und die Kapazitätsentzerrung
+schob die echte Arbeit nach hinten.
+
+**Behoben.** Gestufte Reihung: Priorität → plausibel vor Rückstand → Rhythmustreue →
+Defizit. 398 Treffer, 1,52× Zufall, 3,04× gegen die triviale Vergleichsbasis.
+`Engine.RUECKSTAND_AB = 2,5`, zwischen 2,0 und 4,0 unempfindlich. Invariante 18 verlangt,
+dass Änderungen an dieser Sortierung durch den Backtest belegt werden.
+
+## E6 · mm wurde über Einträge verschiedener Schiffe summiert
+
+**Fehler.** In der ersten Fassung der Auswertung. mm ist eine Grösse **je Fläche**:
+bekommt jedes von vier Schiffen an seinem eigenen Tag 20 mm, dann hat jedes 20 mm in vier
+Tagen bekommen — nicht das Feld 80 mm. Der Fehler vervierfachte das Ist und hätte die
+zentrale Aussage der Ansicht ins Gegenteil verkehrt.
+
+**Behoben.** Je Schiff rechnen, danach der Median über die Schiffe, plus die Spanne vom
+10. bis zum 90. Prozentwert. Invariante 3. Der Regressionstest rechnet beide Wege nach und
+verlangt, dass die Ansicht dem richtigen folgt — durch Mutation verifiziert (mit dem
+Fehler: 35,2 statt 2,3 mm/Tag).
+
+## E7 · Einträge mit unvollständiger Schiffzuordnung erzeugten Phantom-mm
+
+**Fehler.** 27 Journaleinträge nennen für ihre Sprenklerzahl zu wenige Schiffe. Cherwis,
+8. Juli: **Schiff 3, 37 Kreisregner, 465 m³** — 37 Kreisregner belegen rund 15 300 m²,
+Schiff 3 hat rund 3 900 m². Daraus entstanden 119 mm in einem einzigen Gang, und diese
+Werte liefen in jede mm-Statistik ein.
+
+**Behoben.** `Engine.deckungVon()` prüft beregnete gegen genannte Fläche;
+`Engine.DECKUNG_MAX = 2,5` (Verteilung über 798 Einträge: Median 0,71, p95 1,82, Maximum
+4,65; über der Schwelle ist der Median-mm mit 25,4 gegen 10,1 zweieinhalbfach überhöht).
+Solche Einträge zählen weiter in allen m³-Summen — die Menge ist gemessen —, liefern aber
+keine mm-Zahl. Im Journal markiert mit Begründung und Hinweis, wie man sie zurückholt.
+
+## E8 · Falscher Massstab bei der Bewertung der Rangfolge
+
+**Fehler.** Ein Fehler in der **Prüfung**, nicht im Code, aber er hätte fast zur falschen
+Entscheidung geführt: der erste Backtest verglich die Rangfolge mit blindem Ziehen aus
+**allen** Schiffen. Das misst Filter und Rangfolge zusammen. Wer eine Sortierung bewerten
+will, muss den Kandidatenkreis konstant halten — der richtige Gegner ist blindes Ziehen
+**aus der eigenen Fälligkeitsliste**.
+
+**Behoben.** Beide Zahlen stehen im Bericht nebeneinander, mit ausgeschriebener Warnung,
+welche davon die Frage beantwortet. `tools/regression.js` prüft gegen die richtige.
+
+## E9 · Negative Ergebnisse, die als solche umgesetzt wurden
+
+Kein Fehler, sondern eine Haltung, die festgehalten gehört. Drei geprüfte Hypothesen
+haben **nicht** gehalten, und die Engine hat entsprechend **nichts** bekommen:
+
+- **Sättigung bei vielen Sprenklern** (H2b) — kein Modell schlägt das lineare. Die
+  Abnahme von 2,16 auf 1,82 m³/h je Sprenkler ist real, aber zu schwach für die Prognose.
+  Die zunächst gefitteten Parameter wurden wieder aus `data/modell.json` entfernt.
+- **Zeitgewichtung älterer Gänge** (H6) — bringt nichts.
+- **Bodenmodell** (H8) — die Daten tragen es nicht.
+
+Ein viertes Ergebnis (H5, Zuordnung von Gruppenmessungen) ist bei n = 733 statistisch
+signifikant und mit 1,5 % Unterschied praktisch belanglos. Auch das steht so da.
+
+## E10 · Zwei eigene Auswertungsfehler, offen korrigiert
+
+- **H7 rechnete beobachtete Intervalle je Feld statt je Schiff und Kultur** — genau der
+  Fehler, vor dem der Auftrag gewarnt hatte. Dadurch waren frühere Aussagen im
+  Praxis-Durchgang (Eiägert 4,7×, Cherwis 4×) falsch. Korrigiert, mit Korrekturnotiz in
+  `docs/modell.md`.
+- **Der Bootstrap in Audit §7 war doppelt gezogen** und lieferte nicht-monotone Ergebnisse.
+  Ersetzt durch eine saubere Varianzzerlegung (innen/zwischen/ICC).

@@ -173,12 +173,42 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
 
     /* mm darf nicht über Einträge summiert werden, die verschiedene Schiffe
        betreffen — sonst vervielfacht sich das Ist mit der Zahl der Schiffe.
-       Gegenprobe: kein Ist darf ein Vielfaches des Solls jenseits des
-       Plausiblen sein, wenn die Regel aus derselben Wirklichkeit stammt. */
+       Der Test rechnet dieselbe Kombination BEIDE Wege nach und verlangt, dass
+       die Ansicht dem richtigen folgt. Damit er überhaupt unterscheiden kann,
+       wird eine Kombination mit mehreren Schiffen gewählt und geprüft, dass
+       die beiden Wege sich deutlich unterscheiden. */
     const S=Auswert.sollIst();
     o.sollIst=S.length;
-    o.istPlausibel=S.every(x=>x.istProTag>=0 && x.istProTag<40);
     o.hatBeobachtet=S.filter(x=>x.ivBeob!=null).length;
+    o.istPlausibel=S.every(x=>x.istProTag>=0 && x.istProTag<40);
+
+    const probe=S.filter(x=>x.nSchiffe>=3).sort((a,b)=>b.n-a.n)[0];
+    if(probe){
+      const E=Auswert.daten().E.filter(x=>x.feld && x.kultur && !x.rollomat
+        && x.feld.id===probe.feld.id && x.kultur.id===probe.kultur.id && x.mm!=null);
+      const r=Store.regel(probe.feld.id, probe.kultur.id);
+      const iv=Engine.regelIntervall(r);
+      /* Weg A – falsch: über alle Einträge des FELDES summieren */
+      let mmA=0, vonA=null, bisA=null;
+      E.forEach(x=>{ mmA+=x.mm;
+        if(!vonA||x.datum<vonA) vonA=x.datum; if(!bisA||x.datum>bisA) bisA=x.datum; });
+      const istFalsch = mmA/Math.max(iv, D.diff(vonA,bisA)+iv);
+      /* Weg B – richtig: je SCHIFF, danach der Median */
+      const jeS={};
+      E.forEach(x=>x.schiffe.forEach(sc=>{
+        const t=jeS[sc.id]=jeS[sc.id]||{mm:0,von:x.datum,bis:x.datum};
+        t.mm+=x.mm;
+        if(x.datum<t.von) t.von=x.datum; if(x.datum>t.bis) t.bis=x.datum; }));
+      const werte=Object.values(jeS)
+        .map(t=>t.mm/Math.max(iv, D.diff(t.von,t.bis)+iv)).sort((a,b)=>a-b);
+      const istRichtig=werte.length%2 ? werte[werte.length>>1]
+        : (werte[(werte.length>>1)-1]+werte[werte.length>>1])/2;
+      o.probe={feld:probe.feld.name, kultur:probe.kultur.name, schiffe:probe.nSchiffe,
+               ansicht:+probe.istProTag.toFixed(3),
+               richtig:+istRichtig.toFixed(3), falsch:+istFalsch.toFixed(3)};
+      o.folgtRichtigem = Math.abs(probe.istProTag-istRichtig) < 0.01*Math.max(1,istRichtig);
+      o.wegeUnterscheidbar = istFalsch > istRichtig*1.5;
+    }
 
     /* Fläche darf nicht doppelt gezählt werden: die berührte Fläche im
        Überblick kann nie grösser sein als die Fläche aller Schiffe. */
@@ -208,7 +238,8 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
     return o;
   });
   t('Auswertung rendert Tabellen und Balken', AW.tabellen>=5 && AW.balken>20, AW);
-  t('Soll-Ist rechnet je Schiff, nicht je Feld', AW.sollIst>=5 && AW.istPlausibel, AW);
+  t('Soll-Ist rechnet je Schiff, nicht je Feld',
+    AW.sollIst>=5 && AW.istPlausibel && AW.folgtRichtigem && AW.wegeUnterscheidbar, AW.probe);
   t('Soll-Ist schlägt eine beobachtete Regel vor', AW.hatBeobachtet>=AW.sollIst-2, AW);
   t('berührte Fläche ohne Doppelzählung', AW.flaechePlausibel, AW);
   t('Deckungsschwelle liegt jenseits des 95. Prozentwerts',
