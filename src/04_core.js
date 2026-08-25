@@ -28,7 +28,7 @@ const I18N = {
     keinPlanSub:(n)=>'Bitte '+n+' anrufen.', schiff:'Schiff', schiffe:'Schiffe', ziel:'Ziel', dauer:'Dauer',
     starten:'Bewässerung starten', stoppen:'Bewässerung stoppen', laeuft:'läuft', erledigt:'erledigt',
     lageplan:'Lageplan ansehen', welcheSchiffe:'Welche Schiffe hast du bewässert?', startzeit:'Startzeit',
-    stoppzeit:'Stoppzeit', zaehlerStart:'Wasseruhr Start (m³)', zaehlerStop:'Wasseruhr Stopp (m³)',
+    stoppzeit:'Stoppzeit', zaehlerStart:'Wasseruhr Start', zaehlerStop:'Wasseruhr Stopp',
     kreisregner:'Kreisregner', sektorregner:'Sektorregner', bemerkung:'Bemerkung (optional)',
     speichern:'Speichern', abbrechen:'Abbrechen', zurueck:'Zurück', wassermenge:'Wassermenge',
     rechner:'Dauer-Rechner', rechnerSub:'Wie lange für eine bestimmte Menge?', berechnen:'Berechnen',
@@ -67,7 +67,7 @@ const I18N = {
     keinPlanSub:(n)=>'Kérlek hívd fel: '+n+'.', schiff:'Schiff', schiffe:'Schiffe', ziel:'Cél', dauer:'Időtartam',
     starten:'Öntözés indítása', stoppen:'Öntözés leállítása', laeuft:'fut', erledigt:'kész',
     lageplan:'Térkép megtekintése', welcheSchiffe:'Melyik Schiff-eket öntözted?', startzeit:'Kezdés',
-    stoppzeit:'Befejezés', zaehlerStart:'Vízóra indulás (m³)', zaehlerStop:'Vízóra leállás (m³)',
+    stoppzeit:'Befejezés', zaehlerStart:'Vízóra indulás', zaehlerStop:'Vízóra leállás',
     kreisregner:'Körszórófej', sektorregner:'Szektorszórófej', bemerkung:'Megjegyzés (nem kötelező)',
     speichern:'Mentés', abbrechen:'Mégse', zurueck:'Vissza', wassermenge:'Vízmennyiség',
     rechner:'Időtartam-számoló', rechnerSub:'Mennyi ideig egy adott mennyiséghez?', berechnen:'Számítás',
@@ -105,7 +105,7 @@ const I18N = {
     keinPlanSub:(n)=>'Proszę zadzwonić do: '+n+'.', schiff:'Schiff', schiffe:'Schiffe', ziel:'Cel', dauer:'Czas',
     starten:'Rozpocznij nawadnianie', stoppen:'Zakończ nawadnianie', laeuft:'trwa', erledigt:'gotowe',
     lageplan:'Zobacz plan terenu', welcheSchiffe:'Które Schiffe nawadniałeś?', startzeit:'Początek',
-    stoppzeit:'Koniec', zaehlerStart:'Wodomierz start (m³)', zaehlerStop:'Wodomierz stop (m³)',
+    stoppzeit:'Koniec', zaehlerStart:'Wodomierz start', zaehlerStop:'Wodomierz stop',
     kreisregner:'Zraszacz okrągły', sektorregner:'Zraszacz sektorowy', bemerkung:'Uwagi (opcjonalnie)',
     speichern:'Zapisz', abbrechen:'Anuluj', zurueck:'Wstecz', wassermenge:'Ilość wody',
     rechner:'Kalkulator czasu', rechnerSub:'Jak długo dla danej ilości?', berechnen:'Oblicz',
@@ -175,7 +175,10 @@ function openModal(title, bodyHTML, footHTML, wide){
     <div class="modal-b">${bodyHTML}</div>${footHTML?`<div class="modal-f">${footHTML}</div>`:''}`;
   $('#mask').classList.add('on'); return m;
 }
-function closeModal(){ $('#mask').classList.remove('on'); $('#modal').innerHTML=''; }
+function closeModal(){
+  if(typeof WM!=='undefined' && WM._planPV && WM._planPV.destroy){ WM._planPV.destroy(); WM._planPV=null; }
+  $('#mask').classList.remove('on'); $('#modal').innerHTML='';
+}
 /* Rückfrage vor zerstörenden Aktionen – ersetzt confirm()/prompt() */
 function frage(titel, textHTML, knopf, fn, gefaehrlich){
   window._frageFn = ()=>{ closeModal(); fn(); };
@@ -348,6 +351,12 @@ const Store = {
   /* echte, nummerierte Schiffe (für Zählungen in der Oberfläche) */
   echteSchiffe(f){ return f.schiffe.filter(s=>!s.implizit); },
   schiffZahl(){ return this.db.felder.reduce((a,f)=>a+this.echteSchiffe(f).length,0); },
+  /* Einheit der Hauptwasseruhr eines Standorts (Pflichtenheft §3) */
+  uhrLabel(standortId){
+    const st=this.standort(standortId);
+    const e=(st&&st.wasseruhr&&st.wasseruhr.einheit)||'m3';
+    return e==='m3' ? 'm³' : e;
+  },
   /* Rohre eines Feldes – am Schiff gespeichert, fachlich Feld-Ebene (Pflichtenheft §3) */
   feldRohre(f){ const out=[]; f.schiffe.forEach(s=>(s.rohre||[]).forEach(r=>out.push({rohr:r, schiff:s}))); return out; },
 

@@ -243,6 +243,7 @@ const WM = {
     const m=openModal(Store.standort(a.standortId).name,
       `<div id="wmPlan"></div><div class="tiny dim" style="margin-top:8px">${esc(T('planBedienung'))}</div>`,
       `<button class="btn pri" onclick="closeModal()">OK</button>`, true);
+    if(this._planPV&&this._planPV.destroy) this._planPV.destroy();
     const pv=PlanView({standortId:a.standortId, feldId:a.feldId, modus:'view', height:430,
       selectedIds:a.schiffIds});          // alle Schiffe der Gruppe hervorheben, nicht nur das erste
     $('#wmPlan',m).appendChild(pv.node);
@@ -264,7 +265,7 @@ const WM = {
           `<button data-id="${esc(s.id)}" class="${sel.has(s.id)?'on':''}">${esc(s.implizit?T('ganzesFeld'):s.nummer)}</button>`).join('')}</div></div>
        <div class="field"><label>${esc(T('startzeit'))}</label>
          <input class="inp" id="wmT1" type="time" value="${nowHM()}"></div>
-       <div class="field"><label>${esc(T('zaehlerStart'))}</label>
+       <div class="field"><label>${esc(T('zaehlerStart'))} (${esc(Store.uhrLabel(a.standortId))})</label>
          <input class="inp big" id="wmM1" type="number" inputmode="decimal" placeholder="0"
            value="${letzteUhr&&letzteUhr.stopM3!=null?letzteUhr.stopM3:''}"></div>
        <div class="grid2">
@@ -304,7 +305,7 @@ const WM = {
         ${esc(T('schiffe'))} ${esc(l.nummern.join(', '))} · ${esc(T('startzeit'))} ${esc(l.startZeit)}</div>
        <div class="field"><label>${esc(T('stoppzeit'))}</label>
          <input class="inp" id="wmT2" type="time" value="${nowHM()}"></div>
-       <div class="field"><label>${esc(T('zaehlerStop'))}</label>
+       <div class="field"><label>${esc(T('zaehlerStop'))} (${esc(Store.uhrLabel(l.standortId))})</label>
          <input class="inp big" id="wmM2" type="number" inputmode="decimal"
            placeholder="${l.startM3??''}"></div>
        <div class="field"><label>${esc(T('bemerkung'))}</label>

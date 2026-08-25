@@ -355,7 +355,7 @@ const I18N = {
     keinPlanSub:(n)=>'Bitte '+n+' anrufen.', schiff:'Schiff', schiffe:'Schiffe', ziel:'Ziel', dauer:'Dauer',
     starten:'Bewässerung starten', stoppen:'Bewässerung stoppen', laeuft:'läuft', erledigt:'erledigt',
     lageplan:'Lageplan ansehen', welcheSchiffe:'Welche Schiffe hast du bewässert?', startzeit:'Startzeit',
-    stoppzeit:'Stoppzeit', zaehlerStart:'Wasseruhr Start (m³)', zaehlerStop:'Wasseruhr Stopp (m³)',
+    stoppzeit:'Stoppzeit', zaehlerStart:'Wasseruhr Start', zaehlerStop:'Wasseruhr Stopp',
     kreisregner:'Kreisregner', sektorregner:'Sektorregner', bemerkung:'Bemerkung (optional)',
     speichern:'Speichern', abbrechen:'Abbrechen', zurueck:'Zurück', wassermenge:'Wassermenge',
     rechner:'Dauer-Rechner', rechnerSub:'Wie lange für eine bestimmte Menge?', berechnen:'Berechnen',
@@ -394,7 +394,7 @@ const I18N = {
     keinPlanSub:(n)=>'Kérlek hívd fel: '+n+'.', schiff:'Schiff', schiffe:'Schiffe', ziel:'Cél', dauer:'Időtartam',
     starten:'Öntözés indítása', stoppen:'Öntözés leállítása', laeuft:'fut', erledigt:'kész',
     lageplan:'Térkép megtekintése', welcheSchiffe:'Melyik Schiff-eket öntözted?', startzeit:'Kezdés',
-    stoppzeit:'Befejezés', zaehlerStart:'Vízóra indulás (m³)', zaehlerStop:'Vízóra leállás (m³)',
+    stoppzeit:'Befejezés', zaehlerStart:'Vízóra indulás', zaehlerStop:'Vízóra leállás',
     kreisregner:'Körszórófej', sektorregner:'Szektorszórófej', bemerkung:'Megjegyzés (nem kötelező)',
     speichern:'Mentés', abbrechen:'Mégse', zurueck:'Vissza', wassermenge:'Vízmennyiség',
     rechner:'Időtartam-számoló', rechnerSub:'Mennyi ideig egy adott mennyiséghez?', berechnen:'Számítás',
@@ -432,7 +432,7 @@ const I18N = {
     keinPlanSub:(n)=>'Proszę zadzwonić do: '+n+'.', schiff:'Schiff', schiffe:'Schiffe', ziel:'Cel', dauer:'Czas',
     starten:'Rozpocznij nawadnianie', stoppen:'Zakończ nawadnianie', laeuft:'trwa', erledigt:'gotowe',
     lageplan:'Zobacz plan terenu', welcheSchiffe:'Które Schiffe nawadniałeś?', startzeit:'Początek',
-    stoppzeit:'Koniec', zaehlerStart:'Wodomierz start (m³)', zaehlerStop:'Wodomierz stop (m³)',
+    stoppzeit:'Koniec', zaehlerStart:'Wodomierz start', zaehlerStop:'Wodomierz stop',
     kreisregner:'Zraszacz okrągły', sektorregner:'Zraszacz sektorowy', bemerkung:'Uwagi (opcjonalnie)',
     speichern:'Zapisz', abbrechen:'Anuluj', zurueck:'Wstecz', wassermenge:'Ilość wody',
     rechner:'Kalkulator czasu', rechnerSub:'Jak długo dla danej ilości?', berechnen:'Oblicz',
@@ -502,7 +502,10 @@ function openModal(title, bodyHTML, footHTML, wide){
     <div class="modal-b">${bodyHTML}</div>${footHTML?`<div class="modal-f">${footHTML}</div>`:''}`;
   $('#mask').classList.add('on'); return m;
 }
-function closeModal(){ $('#mask').classList.remove('on'); $('#modal').innerHTML=''; }
+function closeModal(){
+  if(typeof WM!=='undefined' && WM._planPV && WM._planPV.destroy){ WM._planPV.destroy(); WM._planPV=null; }
+  $('#mask').classList.remove('on'); $('#modal').innerHTML='';
+}
 /* Rückfrage vor zerstörenden Aktionen – ersetzt confirm()/prompt() */
 function frage(titel, textHTML, knopf, fn, gefaehrlich){
   window._frageFn = ()=>{ closeModal(); fn(); };
@@ -675,6 +678,12 @@ const Store = {
   /* echte, nummerierte Schiffe (für Zählungen in der Oberfläche) */
   echteSchiffe(f){ return f.schiffe.filter(s=>!s.implizit); },
   schiffZahl(){ return this.db.felder.reduce((a,f)=>a+this.echteSchiffe(f).length,0); },
+  /* Einheit der Hauptwasseruhr eines Standorts (Pflichtenheft §3) */
+  uhrLabel(standortId){
+    const st=this.standort(standortId);
+    const e=(st&&st.wasseruhr&&st.wasseruhr.einheit)||'m3';
+    return e==='m3' ? 'm³' : e;
+  },
   /* Rohre eines Feldes – am Schiff gespeichert, fachlich Feld-Ebene (Pflichtenheft §3) */
   feldRohre(f){ const out=[]; f.schiffe.forEach(s=>(s.rohre||[]).forEach(r=>out.push({rohr:r, schiff:s}))); return out; },
 
@@ -3864,6 +3873,7 @@ const WM = {
     const m=openModal(Store.standort(a.standortId).name,
       `<div id="wmPlan"></div><div class="tiny dim" style="margin-top:8px">${esc(T('planBedienung'))}</div>`,
       `<button class="btn pri" onclick="closeModal()">OK</button>`, true);
+    if(this._planPV&&this._planPV.destroy) this._planPV.destroy();
     const pv=PlanView({standortId:a.standortId, feldId:a.feldId, modus:'view', height:430,
       selectedIds:a.schiffIds});          // alle Schiffe der Gruppe hervorheben, nicht nur das erste
     $('#wmPlan',m).appendChild(pv.node);
@@ -3885,7 +3895,7 @@ const WM = {
           `<button data-id="${esc(s.id)}" class="${sel.has(s.id)?'on':''}">${esc(s.implizit?T('ganzesFeld'):s.nummer)}</button>`).join('')}</div></div>
        <div class="field"><label>${esc(T('startzeit'))}</label>
          <input class="inp" id="wmT1" type="time" value="${nowHM()}"></div>
-       <div class="field"><label>${esc(T('zaehlerStart'))}</label>
+       <div class="field"><label>${esc(T('zaehlerStart'))} (${esc(Store.uhrLabel(a.standortId))})</label>
          <input class="inp big" id="wmM1" type="number" inputmode="decimal" placeholder="0"
            value="${letzteUhr&&letzteUhr.stopM3!=null?letzteUhr.stopM3:''}"></div>
        <div class="grid2">
@@ -3925,7 +3935,7 @@ const WM = {
         ${esc(T('schiffe'))} ${esc(l.nummern.join(', '))} · ${esc(T('startzeit'))} ${esc(l.startZeit)}</div>
        <div class="field"><label>${esc(T('stoppzeit'))}</label>
          <input class="inp" id="wmT2" type="time" value="${nowHM()}"></div>
-       <div class="field"><label>${esc(T('zaehlerStop'))}</label>
+       <div class="field"><label>${esc(T('zaehlerStop'))} (${esc(Store.uhrLabel(l.standortId))})</label>
          <input class="inp big" id="wmM2" type="number" inputmode="decimal"
            placeholder="${l.startM3??''}"></div>
        <div class="field"><label>${esc(T('bemerkung'))}</label>
