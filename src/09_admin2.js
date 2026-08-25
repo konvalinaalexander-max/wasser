@@ -617,12 +617,15 @@ Object.assign(Admin, {
           const f2=Engine.feldFuerJournal(e.feldJournal);
           const mm=Engine.mmBeide(e);
           const qq=(e.m3&&e.dauerMin)?e.m3/U.minNachH(e.dauerMin):null;
+          const dk=Engine.deckungVon(e)||0, frag=dk>Engine.DECKUNG_MAX;
           return `<tr><td>${e.datum}</td><td>${esc(e.feldJournal)}${f2?'':' <span class="chip r tiny">?</span>'}</td>
             <td>${esc(e.schiffRoh||'–')}</td><td>${esc(e.kultur||'–')}</td>
             <td>${e.dauerMin?hhmm(e.dauerMin):'–'}${e.ueberNacht?' <span class="chip a">Nacht</span>':''}</td>
             <td>${e.m3??'–'}</td>
             <td class="dim">${qq?qq.toFixed(1):'–'}</td>
-            <td${Store.db.einstellungen.mmBezug==='flaeche'?' style="font-weight:650"':' class="dim"'}>${mm.flaeche?mm.flaeche.toFixed(1):'–'}</td>
+            <td${Store.db.einstellungen.mmBezug==='flaeche'?' style="font-weight:650"':' class="dim"'}>${
+              mm.flaeche?mm.flaeche.toFixed(1):'–'}${frag?` <span class="chip r" title="Beregnete Fläche ist das ${
+              dk.toFixed(1)}-fache der genannten Schiffe — für so viele Sprenkler ist diese Fläche zu klein. Vermutlich fehlen Schiffe im Eintrag. Die mm-Zahl ist dadurch zu hoch und wird in der Auswertung nicht verwendet; die Menge in m³ bleibt gültig.">Fläche?</span>`:''}</td>
             <td${Store.db.einstellungen.mmBezug==='beregnet'?' style="font-weight:650"':' class="dim"'}>${mm.beregnet?mm.beregnet.toFixed(1):'–'}</td>
             <td class="dim">${[e.kreisregner?e.kreisregner+'K':'',e.sektorregner?e.sektorregner+'S':''].filter(Boolean).join(' ')||'–'}${
               Engine.istRollomat(e)?' <span class="chip a">Rollomat</span>':''}</td>
@@ -630,6 +633,23 @@ Object.assign(Admin, {
         }).join('')}</tbody></table>`;
     };
     $('#jSuche').addEventListener('input',render); render();
+
+    const fr=Store.db.journal.filter(e=>Engine.zuordnungFraglich(e));
+    if(fr.length){
+      const jeFeld={};
+      fr.forEach(e=>jeFeld[e.feldJournal]=(jeFeld[e.feldJournal]||0)+1);
+      const w=el('div','warnbox'); w.style.marginTop='12px';
+      w.innerHTML=`<b>${fr.length} Einträge nennen zu wenige Schiffe für ihre Sprenklerzahl.</b>
+        Die beregnete Fläche übersteigt die Fläche der genannten Schiffe um mehr als das
+        ${Engine.DECKUNG_MAX}-fache — 37 Kreisregner passen nicht auf ein Schiff von 39 Aren.
+        Betroffen: ${Object.entries(jeFeld).sort((a,b)=>b[1]-a[1]).slice(0,6)
+          .map(([n,c])=>esc(n)+' ('+c+')').join(', ')}.
+        <span class="tiny dim">Die gemessene Menge bleibt gültig und zählt in allen m³-Summen.
+        Nur die mm-Zahl wird aus diesen Einträgen nicht gebildet, sonst entstünden Werte wie
+        120 mm in einem einzigen Gang. Wer die fehlenden Schiffnummern nachträgt, bekommt
+        diese Gänge in die Auswertung zurück.</span>`;
+      p.appendChild(w);
+    }
 
     const un=Engine.journalFelder().filter(j=>!Engine.feldFuerJournal(j));
     if(un.length){

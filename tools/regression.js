@@ -164,6 +164,59 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
   }
   t('Konsole bleibt in allen Ansichten fehlerfrei', errs.length===0, errs.slice(0,3));
 
+  /* ---- Auswertung: rechnet sie, und rechnet sie das Richtige? ---- */
+  const AW=await pg.evaluate(()=>{
+    const o={};
+    Admin.go('auswert');
+    o.tabellen=document.querySelectorAll('#admPage .atab').length;
+    o.balken=document.querySelectorAll('#admPage .bar').length;
+
+    /* mm darf nicht über Einträge summiert werden, die verschiedene Schiffe
+       betreffen — sonst vervielfacht sich das Ist mit der Zahl der Schiffe.
+       Gegenprobe: kein Ist darf ein Vielfaches des Solls jenseits des
+       Plausiblen sein, wenn die Regel aus derselben Wirklichkeit stammt. */
+    const S=Auswert.sollIst();
+    o.sollIst=S.length;
+    o.istPlausibel=S.every(x=>x.istProTag>=0 && x.istProTag<40);
+    o.hatBeobachtet=S.filter(x=>x.ivBeob!=null).length;
+
+    /* Fläche darf nicht doppelt gezählt werden: die berührte Fläche im
+       Überblick kann nie grösser sein als die Fläche aller Schiffe. */
+    const Ub=Auswert.ueberblick();
+    let gesamtM2=0;
+    Store.db.felder.forEach(f=>Store.echteSchiffe(f).forEach(s=>
+      gesamtM2+=Store.schiffFlaecheM2(s,f)||0));
+    o.flaechePlausibel = Ub.aren<=U.m2NachAren(gesamtM2)*1.001;
+    o.gaenge=Ub.gaenge;
+
+    /* Deckungsschwelle muss jenseits des 95. Prozentwerts liegen, sonst
+       wirft sie gesunde Einträge weg. */
+    const dk=[];
+    Store.db.journal.forEach(e=>{ const d=Engine.deckungVon(e); if(d!=null) dk.push(d); });
+    dk.sort((a,b)=>a-b);
+    o.p95=dk[Math.floor(dk.length*0.95)];
+    o.schwelleUeberP95 = Engine.DECKUNG_MAX > o.p95;
+    o.fraglich=dk.filter(x=>x>Engine.DECKUNG_MAX).length;
+    o.anteilFraglich=+(o.fraglich/dk.length).toFixed(3);
+
+    /* Zeitraumwechsel darf die Zahlen ändern, aber nicht zerstören */
+    Auswert.zeitraum='tage30'; Auswert._cache=null; Admin.render();
+    o.tage30=Auswert.ueberblick().gaenge;
+    Auswert.zeitraum='alles'; Auswert._cache=null; Admin.render();
+    o.alles=Auswert.ueberblick().gaenge;
+    Auswert.zeitraum='saison'; Auswert._cache=null; Admin.render();
+    return o;
+  });
+  t('Auswertung rendert Tabellen und Balken', AW.tabellen>=5 && AW.balken>20, AW);
+  t('Soll-Ist rechnet je Schiff, nicht je Feld', AW.sollIst>=5 && AW.istPlausibel, AW);
+  t('Soll-Ist schlägt eine beobachtete Regel vor', AW.hatBeobachtet>=AW.sollIst-2, AW);
+  t('berührte Fläche ohne Doppelzählung', AW.flaechePlausibel, AW);
+  t('Deckungsschwelle liegt jenseits des 95. Prozentwerts',
+    AW.schwelleUeberP95 && AW.anteilFraglich<0.08, {p95:AW.p95, anteil:AW.anteilFraglich});
+  t('Zeiträume liefern eine sinnvolle Staffelung',
+    AW.tage30>0 && AW.tage30<=AW.gaenge && AW.alles>=AW.gaenge,
+    {t30:AW.tage30, saison:AW.gaenge, alles:AW.alles});
+
   /* ---- Rückstands-Stufung: die Reihung darf sich nicht still umdrehen ---- */
   const rk=await pg.evaluate(()=>{
     Engine.planNeu();

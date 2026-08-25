@@ -31,7 +31,8 @@ const Admin = {
   go(t){ this.tab=t; this.renderTabs(); this.render(); },
   render(){
     const p=$('#admPage'); p.innerHTML='';
-    const m={plan:'vPlan',standorte:'vStandorte',kulturen:'vKulturen',journal:'vJournal',einst:'vEinst'}[this.tab];
+    const m={plan:'vPlan',auswert:'vAuswert',standorte:'vStandorte',kulturen:'vKulturen',
+             journal:'vJournal',einst:'vEinst'}[this.tab];
     if(m) this[m](p);
   },
 
@@ -298,7 +299,7 @@ const Admin = {
           <b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>Sprenkler</span></div>`:''}
         ${gang.zielM3?`<div class="kv"><b>${Math.round(gang.zielM3)} m³</b><span>Wasser</span></div>`:''}
         ${a.ueberfaellig>0?`<div class="kv" title="entspricht dem ${
-          (a.dringlichkeit||1).toFixed(1).replace('.',',')}-fachen der Regelmenge"><b style="color:var(--rust)">+${
+          (a.dringlichkeit||1).toFixed(1)}-fachen der Regelmenge"><b style="color:var(--rust)">+${
           a.ueberfaellig} T</b><span>überfällig</span></div>`:''}
         ${a.letzteBew?`<div class="kv"><b>${D.diff(a.letzteBew,datum)} T</b><span>seit letzter Bew.</span></div>`:''}
       </div>
@@ -309,7 +310,7 @@ const Admin = {
           ?`<span class="chip a" title="${esc(W.text(gang.dauerMin, x=>hhmm(x)))}">Dauer ${
             W.stufe(gang.dauerMin)==='schwach'?'unsicher':'mittel sicher'}</span>`:''}
         ${a.rueckstand?`<span class="chip a" title="Der Rückstand beträgt das ${
-          (a.dringlichkeit||1).toFixed(1).replace('.',',')}-fache der Regelmenge. Ab dem ${
+          (a.dringlichkeit||1).toFixed(1)}-fache der Regelmenge. Ab dem ${
           Engine.RUECKSTAND_AB}-fachen ist erfahrungsgemäss nicht der Wasserbedarf die Ursache: In der Historie wurden Schiffe mit so grossem Rückstand nur in 16 % der Fälle bewässert, solche im Takt in 52 %. Prüfen: Kultur noch da? Regel zu eng? Gang nicht eingetragen?">Rückstand — Regel prüfen</span>`:''}
         ${a.geschaetzt?'<span class="chip a">Fälligkeit geschätzt — keine Historie</span>':''}
         ${a.quelle==='manuell'?'<span class="chip b">manuell</span>':''}

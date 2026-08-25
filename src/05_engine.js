@@ -106,6 +106,36 @@ const Engine = {
     return (kreis||0)*s.breite*s.abstandKreis + (sektor||0)*s.breite*s.abstandSektor;
   },
 
+  /* Ab welchem Verhältnis von beregneter zu genannter Fläche die
+     Schiffzuordnung eines Journaleintrags unglaubwürdig wird.
+     Verteilung über 798 auswertbare Einträge: Median 0,71, p90 1,51,
+     p95 1,82, Maximum 4,65. Über 2,5 liegen 27 Einträge (3,4 %), und deren
+     Median-mm ist mit 25,4 gegen 10,1 mm zweieinhalbfach überhöht — die
+     genannten Schiffe können die eingetragenen Sprenkler nicht tragen.
+     Die Schwelle beschreibt den Schwanz der eigenen Verteilung, nicht einen
+     absoluten Wert; ein falsch gesetzter Sprenklerabstand verschiebt alle
+     Werte gemeinsam und ändert daran nichts. */
+  DECKUNG_MAX: 2.5,
+
+  /* Beregnete Fläche geteilt durch die Fläche der genannten Schiffe. */
+  deckungVon(e){
+    const bf=this.beregneteFlaeche(e.kreisregner, e.sektorregner);
+    if(!bf) return null;
+    const f=this.feldFuerJournal(e.feldJournal);
+    if(!f) return null;
+    const n=new Set((e.schiffe||[]).map(String));
+    const m2=f.schiffe.filter(s=>n.has(String(s.nummer)))
+                      .reduce((a,s)=>a+(Store.schiffFlaecheM2(s,f)||0),0);
+    return m2 ? bf/m2 : null;
+  },
+  /* „Für so viele Sprenkler ist die genannte Fläche zu klein" — dann fehlen
+     Schiffe im Eintrag, und jede mm-Zahl daraus ist zu hoch. Die Menge in m³
+     bleibt gültig, sie ist gemessen. */
+  zuordnungFraglich(e){
+    const d=this.deckungVon(e);
+    return d!=null && d>this.DECKUNG_MAX;
+  },
+
   /* mm eines Journaleintrags — beide Definitionen, plus die eingestellte */
   mmBeide(e){
     if(!e || !e.m3) return {flaeche:null, beregnet:null};
