@@ -1298,6 +1298,28 @@ const Engine = {
         const prio=paket.map(i=>i.e.sektor.prioritaet||'normal')
                         .sort((a,b)=>({hoch:0,normal:1,niedrig:2}[a]-{hoch:0,normal:1,niedrig:2}[b]))[0];
         const ueberfaellig=Math.max(...paket.map(i=>Math.round((i.b.defizit-i.b.menge)/i.b.proTag)));
+        /* Dringlichkeit als VIELFACHES der Regelmenge, nicht in Tagen.
+           Tage sind zwischen Rhythmen nicht vergleichbar: eine tägliche Kultur,
+           die einen Tag überfällig ist, hat einen ganzen Zyklus verpasst — eine
+           Wochenkultur nach einem Tag ein Siebtel. Nach Tagen sortiert stehen
+           deshalb systematisch die langsamen Kulturen vorne. */
+        const dringlichkeit=Math.max(...paket.map(i=> i.b.menge? i.b.defizit/i.b.menge : 1));
+        /* Rhythmustreue: wie nah der Abstand seit dem letzten Gang am eigenen
+           Sollrhythmus liegt (0 = genau im Takt). Der Backtest zeigt, dass das
+           der mit Abstand beste Sortierschlüssel ist — deutlich besser als die
+           reine Dringlichkeit. Massgeblich ist das am besten passende Schiff
+           im Paket, deshalb das Minimum. */
+        const rhythmus=Math.min(...paket.map(i=>{
+          const soll = i.b.proTag ? i.b.menge/i.b.proTag : null;
+          const seit = i.b.letzte ? D.diff(i.b.letzte, datum) : null;
+          return (soll==null || seit==null) ? 99 : Math.abs(seit-soll);
+        }));
+        /* Rückstand: so weit über der Regel, dass nicht mehr die Dringlichkeit
+           die plausibelste Erklärung ist, sondern ein Fehler in den Stammdaten
+           — Kultur abgeräumt, Regel zu eng, Gang nicht eingetragen. Solche
+           Aufträge dürfen die Liste nicht anführen; sie brauchen eine
+           Entscheidung, keinen Wassergang. */
+        const rueckstand = dringlichkeit >= this.RUECKSTAND_AB;
         /* Ältestes Datum im Paket – dasselbe Schiff, das auch die Überfälligkeit bestimmt.
            Vorher stand hier das jüngste, was „1 Tag" neben „+64 Tage überfällig" ergab. */
         const letzte=paket.map(i=>i.b.letzte).filter(Boolean).sort()[0]||null;
@@ -1318,6 +1340,7 @@ const Engine = {
             standortId:first.standort.id, feldId, kulturId:first.sektor.kulturId,
             schiffIds, sektorIds, nummern,
             zielMm:menge, letzteBew:letzte, regenMm:regen||0,
+            dringlichkeit, rhythmus, rueckstand,
             angepasstMm: vorschlag? vorschlag.mm : null,
             anpassungText: vorschlag? vorschlag.hinweis : null,
             anpassungAngenommen: false, anpassungManuell:false,
@@ -1331,13 +1354,30 @@ const Engine = {
         }
       });
     });
-    return out.sort(this.dringlichkeit);
+    return out.sort(this.reihung);
   },
 
-  /* hoch vor normal vor niedrig, danach: je überfälliger, desto weiter vorne */
-  dringlichkeit(a,b){
+  /* Ab welchem Vielfachen der Regelmenge ein Auftrag als Rückstand gilt.
+     Im Backtest ist das Ergebnis zwischen 2,0 und 4,0 praktisch gleich
+     (362–375 Treffer), die Wahl ist also nicht an die Daten angepasst. */
+  RUECKSTAND_AB: 2.5,
+
+  /* Reihenfolge der Aufträge. Belegt durch den Backtest (tools/backtest.js):
+       nach Dringlichkeit sortiert   177 Treffer   0,68× Zufall
+       gestuft + Rhythmustreue       423 Treffer   1,62× Zufall
+     Nach purer Dringlichkeit zu sortieren war schlechter als würfeln, weil ein
+     grosses Defizit meist keinen grossen Bedarf anzeigt, sondern ein Schiff,
+     das aus der Rotation gefallen ist. Die Bewässerungsquote fällt mit
+     steigender Dringlichkeit: 52 % bei 1,0–1,5 gegen 16 % über 3.
+     Deshalb: Priorität, dann plausible Aufträge vor Rückständen, dann wer am
+     genauesten im eigenen Takt liegt, erst dann das Defizit. */
+  reihung(a,b){
     const p={hoch:0,normal:1,niedrig:2};
-    return (p[a.prioritaet]-p[b.prioritaet]) || (b.ueberfaellig-a.ueberfaellig)
+    return (p[a.prioritaet]-p[b.prioritaet])
+           || ((a.rueckstand?1:0)-(b.rueckstand?1:0))
+           || ((a.rhythmus??99)-(b.rhythmus??99))
+           || ((b.dringlichkeit??1)-(a.dringlichkeit??1))
+           || (b.ueberfaellig-a.ueberfaellig)
            || ((a.zeitfenster??99)-(b.zeitfenster??99));
   },
 
@@ -1459,7 +1499,7 @@ const Engine = {
       /* 3 · von Hand angelegte Aufträge */
       const zusatz=(Store.db.zusatz[d]||[]).map(a=>Object.assign({},a,{datum:d}));
 
-      let alle=[...zusatz, ...kandidaten].sort(this.dringlichkeit);
+      let alle=[...zusatz, ...kandidaten].sort(this.reihung);
 
       /* 5 · entzerren nach der Tageskapazität (Pflichtenheft §9.3/§9.5).
              Sortiert ist bereits nach Dringlichkeit. Was heute nicht mehr
@@ -2180,6 +2220,10 @@ const Admin = {
     /* Kennzahlen: das sieht der Leiter zuerst */
     const heute=Engine.tagesPlan(D.today());
     const ueberf=heute.auftraege.filter(a=>a.ueberfaellig>0).length;
+    /* Rückstände getrennt zählen: das sind keine dringenden Gänge, sondern
+       Klärfälle. Sie stehen in der Liste hinten, dürfen aber nicht
+       verschwinden — sonst fällt genau das nicht auf, was auffallen muss. */
+    const rueck=heute.auftraege.filter(a=>a.rueckstand).length;
     const woGrenze=D.add(D.today(),-6);
     let m3Woche=0;
     Store.db.journal.forEach(j=>{ if(j.datum>=woGrenze && j.m3) m3Woche+=j.m3; });
@@ -2193,6 +2237,8 @@ const Admin = {
     statr.innerHTML=`
       <div class="stt"><b>${heute.auftraege.length}</b><span>heute fällig</span></div>
       <div class="stt"><b style="color:${ueberf?'var(--rust)':'inherit'}">${ueberf}</b><span>überfällig</span></div>
+      <div class="stt" title="Aufträge, die mehr als das ${Engine.RUECKSTAND_AB}-fache der Regelmenge im Rückstand sind. Meist steckt kein Wasserbedarf dahinter, sondern eine abgeräumte Kultur, eine zu enge Regel oder ein nicht eingetragener Gang."><b style="color:${
+        rueck?'var(--amber)':'inherit'}">${rueck}</b><span>Klärfälle</span></div>
       <div class="stt"><b>${Math.round(m3Woche)} m³</b><span>Wasser · 7 Tage</span></div>
       <div class="stt"><b>${regenWoche?Math.round(regenWoche*10)/10+' mm':'–'}</b><span>Regen · 7 Tage</span></div>`;
     p.appendChild(statr);
@@ -2327,7 +2373,9 @@ const Admin = {
         ${spr&&spr.kreis?`<div class="kv" title="${esc(W.HERKUNFT[gang.sprenkler.quelle]||'')}">
           <b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>Sprenkler</span></div>`:''}
         ${gang.zielM3?`<div class="kv"><b>${Math.round(gang.zielM3)} m³</b><span>Wasser</span></div>`:''}
-        ${a.ueberfaellig>0?`<div class="kv"><b style="color:var(--rust)">+${a.ueberfaellig} T</b><span>überfällig</span></div>`:''}
+        ${a.ueberfaellig>0?`<div class="kv" title="entspricht dem ${
+          (a.dringlichkeit||1).toFixed(1).replace('.',',')}-fachen der Regelmenge"><b style="color:var(--rust)">+${
+          a.ueberfaellig} T</b><span>überfällig</span></div>`:''}
         ${a.letzteBew?`<div class="kv"><b>${D.diff(a.letzteBew,datum)} T</b><span>seit letzter Bew.</span></div>`:''}
       </div>
       <div class="ameta">
@@ -2336,6 +2384,9 @@ const Admin = {
         ${['schwach','mittel'].includes(W.stufe(gang.dauerMin))
           ?`<span class="chip a" title="${esc(W.text(gang.dauerMin, x=>hhmm(x)))}">Dauer ${
             W.stufe(gang.dauerMin)==='schwach'?'unsicher':'mittel sicher'}</span>`:''}
+        ${a.rueckstand?`<span class="chip a" title="Der Rückstand beträgt das ${
+          (a.dringlichkeit||1).toFixed(1).replace('.',',')}-fache der Regelmenge. Ab dem ${
+          Engine.RUECKSTAND_AB}-fachen ist erfahrungsgemäss nicht der Wasserbedarf die Ursache: In der Historie wurden Schiffe mit so grossem Rückstand nur in 16 % der Fälle bewässert, solche im Takt in 52 %. Prüfen: Kultur noch da? Regel zu eng? Gang nicht eingetragen?">Rückstand — Regel prüfen</span>`:''}
         ${a.geschaetzt?'<span class="chip a">Fälligkeit geschätzt — keine Historie</span>':''}
         ${a.quelle==='manuell'?'<span class="chip b">manuell</span>':''}
         ${a.verschoben?'<span class="chip">verschoben</span>':''}

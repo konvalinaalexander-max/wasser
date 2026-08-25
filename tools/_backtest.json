@@ -1,0 +1,16 @@
+{
+ "f1Engine": 0.3682,
+ "f1Basis": 0.3252,
+ "genauigkeit": 0.2504,
+ "trefferquote": 0.6953,
+ "dauerMedianFehlerMin": 11.89,
+ "dauerInnerhalb30": 0.8956,
+ "rangTrefferEngine": 0.4682,
+ "rangTrefferBasis": 0.1541,
+ "rangTrefferZufallInListe": 0.3078,
+ "rangTrefferZufallGlobal": 0.2627,
+ "anreicherungEngine": 1.1499,
+ "anreicherungBasis": 1.0875,
+ "n": 632,
+ "stichtage": 62
+}

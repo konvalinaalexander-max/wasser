@@ -144,6 +144,10 @@ const Admin = {
     /* Kennzahlen: das sieht der Leiter zuerst */
     const heute=Engine.tagesPlan(D.today());
     const ueberf=heute.auftraege.filter(a=>a.ueberfaellig>0).length;
+    /* Rückstände getrennt zählen: das sind keine dringenden Gänge, sondern
+       Klärfälle. Sie stehen in der Liste hinten, dürfen aber nicht
+       verschwinden — sonst fällt genau das nicht auf, was auffallen muss. */
+    const rueck=heute.auftraege.filter(a=>a.rueckstand).length;
     const woGrenze=D.add(D.today(),-6);
     let m3Woche=0;
     Store.db.journal.forEach(j=>{ if(j.datum>=woGrenze && j.m3) m3Woche+=j.m3; });
@@ -157,6 +161,8 @@ const Admin = {
     statr.innerHTML=`
       <div class="stt"><b>${heute.auftraege.length}</b><span>heute fällig</span></div>
       <div class="stt"><b style="color:${ueberf?'var(--rust)':'inherit'}">${ueberf}</b><span>überfällig</span></div>
+      <div class="stt" title="Aufträge, die mehr als das ${Engine.RUECKSTAND_AB}-fache der Regelmenge im Rückstand sind. Meist steckt kein Wasserbedarf dahinter, sondern eine abgeräumte Kultur, eine zu enge Regel oder ein nicht eingetragener Gang."><b style="color:${
+        rueck?'var(--amber)':'inherit'}">${rueck}</b><span>Klärfälle</span></div>
       <div class="stt"><b>${Math.round(m3Woche)} m³</b><span>Wasser · 7 Tage</span></div>
       <div class="stt"><b>${regenWoche?Math.round(regenWoche*10)/10+' mm':'–'}</b><span>Regen · 7 Tage</span></div>`;
     p.appendChild(statr);
@@ -291,7 +297,9 @@ const Admin = {
         ${spr&&spr.kreis?`<div class="kv" title="${esc(W.HERKUNFT[gang.sprenkler.quelle]||'')}">
           <b>${spr.kreis}${spr.sektor?'+'+spr.sektor:''}</b><span>Sprenkler</span></div>`:''}
         ${gang.zielM3?`<div class="kv"><b>${Math.round(gang.zielM3)} m³</b><span>Wasser</span></div>`:''}
-        ${a.ueberfaellig>0?`<div class="kv"><b style="color:var(--rust)">+${a.ueberfaellig} T</b><span>überfällig</span></div>`:''}
+        ${a.ueberfaellig>0?`<div class="kv" title="entspricht dem ${
+          (a.dringlichkeit||1).toFixed(1).replace('.',',')}-fachen der Regelmenge"><b style="color:var(--rust)">+${
+          a.ueberfaellig} T</b><span>überfällig</span></div>`:''}
         ${a.letzteBew?`<div class="kv"><b>${D.diff(a.letzteBew,datum)} T</b><span>seit letzter Bew.</span></div>`:''}
       </div>
       <div class="ameta">
@@ -300,6 +308,9 @@ const Admin = {
         ${['schwach','mittel'].includes(W.stufe(gang.dauerMin))
           ?`<span class="chip a" title="${esc(W.text(gang.dauerMin, x=>hhmm(x)))}">Dauer ${
             W.stufe(gang.dauerMin)==='schwach'?'unsicher':'mittel sicher'}</span>`:''}
+        ${a.rueckstand?`<span class="chip a" title="Der Rückstand beträgt das ${
+          (a.dringlichkeit||1).toFixed(1).replace('.',',')}-fache der Regelmenge. Ab dem ${
+          Engine.RUECKSTAND_AB}-fachen ist erfahrungsgemäss nicht der Wasserbedarf die Ursache: In der Historie wurden Schiffe mit so grossem Rückstand nur in 16 % der Fälle bewässert, solche im Takt in 52 %. Prüfen: Kultur noch da? Regel zu eng? Gang nicht eingetragen?">Rückstand — Regel prüfen</span>`:''}
         ${a.geschaetzt?'<span class="chip a">Fälligkeit geschätzt — keine Historie</span>':''}
         ${a.quelle==='manuell'?'<span class="chip b">manuell</span>':''}
         ${a.verschoben?'<span class="chip">verschoben</span>':''}

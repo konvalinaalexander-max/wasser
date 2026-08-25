@@ -164,6 +164,45 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
   }
   t('Konsole bleibt in allen Ansichten fehlerfrei', errs.length===0, errs.slice(0,3));
 
+  /* ---- Rückstands-Stufung: die Reihung darf sich nicht still umdrehen ---- */
+  const rk=await pg.evaluate(()=>{
+    Engine.planNeu();
+    const a=Object.values(Store.db.plan).flatMap(p=>p.auftraege).filter(x=>x.quelle==='auto');
+    const markiert=a.every(x=>x.rueckstand===(x.dringlichkeit>=Engine.RUECKSTAND_AB));
+    /* innerhalb gleicher Priorität steht kein Rückstand vor einem normalen Auftrag */
+    let ordnung=true;
+    Object.values(Store.db.plan).forEach(p=>{
+      const l=p.auftraege.filter(x=>x.quelle==='auto'&&x.prioritaet==='normal');
+      for(let i=1;i<l.length;i++) if(l[i-1].rueckstand && !l[i].rueckstand) ordnung=false;
+    });
+    return {markiert, ordnung, hatFeld:a.length? ('rhythmus' in a[0]) : false};
+  });
+  t('Rückstände sind markiert und stehen hinten', rk.markiert&&rk.ordnung&&rk.hatFeld, rk);
+
+  /* ---- Backtest-Kennzahlen: dürfen nicht still schlechter werden ----
+     Quelle ist tools/_backtest.json, geschrieben von tools/backtest.js.
+     Die Schwellen liegen unter den gemessenen Werten, aber deutlich über
+     dem, was ein kaputtes Modell liefern würde. */
+  const fsx=require('fs');
+  if(fsx.existsSync('tools/_backtest.json')){
+    const B=JSON.parse(fsx.readFileSync('tools/_backtest.json','utf8'));
+    const alt = fsx.statSync('tools/_backtest.json').mtimeMs < fsx.statSync('build/wasserplan.html').mtimeMs;
+    if(alt) console.log('  ! tools/_backtest.json ist älter als der Build — `node tools/backtest.js` neu laufen lassen');
+    t('Backtest: Reihung schlägt den Zufall in der eigenen Liste',
+      B.rangTrefferEngine > B.rangTrefferZufallInListe*1.2,
+      {engine:B.rangTrefferEngine, zufall:B.rangTrefferZufallInListe});
+    t('Backtest: Reihung schlägt die triviale Vergleichsbasis',
+      B.rangTrefferEngine > B.rangTrefferBasis*2, {engine:B.rangTrefferEngine, basis:B.rangTrefferBasis});
+    t('Backtest: F1 der Fälligkeit über der Vergleichsbasis',
+      B.f1Engine > B.f1Basis, {engine:B.f1Engine, basis:B.f1Basis});
+    t('Backtest: Dauerprognose zu über 85 % innerhalb ±30 %',
+      B.dauerInnerhalb30 >= 0.85, B.dauerInnerhalb30);
+    t('Backtest: Median-Fehler der Dauer unter 15 min',
+      B.dauerMedianFehlerMin <= 15, B.dauerMedianFehlerMin);
+  } else {
+    console.log('  ! tools/_backtest.json fehlt — `node tools/backtest.js` liefert die Kennzahlen');
+  }
+
   console.log(`\n  ${pass} bestanden, ${fail} fehlgeschlagen`);
   await b.close();
   process.exit(fail?1:0);
