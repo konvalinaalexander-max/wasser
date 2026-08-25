@@ -1,0 +1,18 @@
+{
+ "_h1_flaecheJeKreisregnerM2_gefittet": 445.7,
+ "_h1_flaecheJeSektorregnerM2_gefittet": 355.6,
+ "deckungMedian": 0.707,
+ "qJeKreisregner": 1.848,
+ "qJeSektorregner": 2.198,
+ "qModell": "linear",
+ "qPotenzExponent": 0.93,
+ "mmVerhaeltnisAzuB": 1.415,
+ "zeitgewichtung": "ungewichtet",
+ "shrinkageLambda": 2.8,
+ "sdInnerhalbSchiff": 0.334,
+ "sdZwischenSchiffen": 0.2,
+ "iccSchiff": 0.264,
+ "iccFeld": 0.338,
+ "_erzeugt": "tools/kalibrierung.py",
+ "_grundlage": "733 auswertbare Gänge aus 1069 Journaleinträgen"
+}
