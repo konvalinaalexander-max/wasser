@@ -1,0 +1,596 @@
+<title>Wasserplan in der Praxis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+:root{
+  --ground:#EFF3F5; --surface:#FFFFFF; --surface-2:#F6F9FA;
+  --ink:#141E28; --ink-2:#54646F; --ink-3:#7F8F99;
+  --line:#D9E1E6; --line-2:#C2CED6;
+  --accent:#0D6883; --accent-soft:#DDEDF2;
+  --p0:#A81F1A; --p0-soft:#F8E3E1;
+  --p1:#8A5804; --p1-soft:#F8EEDC;
+  --p2:#5C6C78; --p2-soft:#E7ECEF;
+  --ok:#1F6B4A; --ok-soft:#E1EFE8;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E141A; --surface:#151D25; --surface-2:#1A242D;
+    --ink:#E1E9EE; --ink-2:#94A4B0; --ink-3:#71838F;
+    --line:#243039; --line-2:#324450;
+    --accent:#54B6D5; --accent-soft:#12303C;
+    --p0:#F1786A; --p0-soft:#33191A;
+    --p1:#DFA845; --p1-soft:#2E2415;
+    --p2:#8B9CA8; --p2-soft:#1E2830;
+    --ok:#5FC194; --ok-soft:#14291F;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E141A; --surface:#151D25; --surface-2:#1A242D;
+  --ink:#E1E9EE; --ink-2:#94A4B0; --ink-3:#71838F;
+  --line:#243039; --line-2:#324450;
+  --accent:#54B6D5; --accent-soft:#12303C;
+  --p0:#F1786A; --p0-soft:#33191A;
+  --p1:#DFA845; --p1-soft:#2E2415;
+  --p2:#8B9CA8; --p2-soft:#1E2830;
+  --ok:#5FC194; --ok-soft:#14291F;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);
+  font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 96px}
+
+header.masthead{border-bottom:1px solid var(--line);background:var(--surface)}
+.masthead .wrap{padding-top:44px;padding-bottom:34px}
+.eyebrow{font-family:var(--mono);font-size:11.5px;font-weight:500;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.eyebrow::before{content:"";width:26px;height:2px;background:var(--accent);flex:none}
+h1{font-family:var(--sans);font-weight:700;font-size:clamp(34px,5.4vw,54px);line-height:1.04;
+  letter-spacing:-.022em;margin:0 0 18px;text-wrap:balance}
+.deck{font-size:19px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin:0 0 26px}
+.deck b{color:var(--ink);font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:0 34px;row-gap:12px;font-family:var(--mono);font-size:12px;
+  color:var(--ink-3);border-top:1px solid var(--line);padding-top:18px}
+.meta div{display:flex;flex-direction:column;gap:3px}
+.meta dt{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.meta dd{margin:0;color:var(--ink);font-weight:500}
+
+.panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden;margin:34px 0 0}
+.gauge{background:var(--surface);padding:16px 18px 15px;display:flex;flex-direction:column;gap:5px}
+.gauge .n{font-family:var(--mono);font-size:28px;font-weight:700;line-height:1;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;color:var(--accent)}
+.gauge .l{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-2)}
+.gauge .s{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.gauge.warn .n{color:var(--p0)}
+
+section.area{padding:56px 0 0;scroll-margin-top:20px}
+.area-head{display:grid;grid-template-columns:52px 1fr;gap:18px;align-items:baseline;
+  border-bottom:2px solid var(--ink);padding-bottom:11px;margin-bottom:6px}
+.area-letter{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--accent);line-height:1;letter-spacing:-.04em}
+.area-head h2{font-family:var(--sans);font-size:clamp(21px,2.7vw,27px);font-weight:700;
+  letter-spacing:-.018em;margin:0;text-wrap:balance}
+.area-head .sub{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:5px;display:block}
+
+p,ul,ol{max-width:66ch}
+p{margin:0 0 14px}
+ul,ol{padding-left:20px}
+li{margin-bottom:7px}
+code{font-family:var(--mono);font-size:.85em;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:2px;padding:1px 5px;overflow-wrap:break-word}
+strong{font-weight:600;color:var(--ink)}
+em{font-style:italic;color:var(--ink-2)}
+h3{font-family:var(--sans);font-size:19px;font-weight:600;letter-spacing:-.012em;margin:30px 0 10px;text-wrap:balance}
+h4{font-family:var(--sans);font-size:15.5px;font-weight:600;margin:22px 0 8px}
+
+.tblwrap{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:2px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.5px}
+th,td{padding:7px 11px;text-align:right;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+th:first-child,td:first-child{text-align:left;white-space:normal}
+thead th{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-3);background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:none}
+td.hot{color:var(--p0);font-weight:700}
+td.good{color:var(--ok);font-weight:700}
+td.dim{color:var(--ink-3)}
+
+/* Szenen-Zeitstrahl */
+.szene{display:grid;grid-template-columns:74px 1fr;gap:0 22px;border-left:2px solid var(--line);
+  margin-left:36px;padding:0 0 4px}
+.szene:last-of-type{border-left-color:transparent}
+.uhr{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent);
+  margin-left:-46px;background:var(--ground);padding:2px 0 6px;position:relative}
+.uhr::after{content:"";position:absolute;left:38px;top:8px;width:9px;height:9px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--ground)}
+.szene .body{padding:0 0 22px}
+.szene h4{margin:0 0 8px}
+.szene p{margin:0 0 10px;font-size:16px}
+.bruch{background:var(--p0-soft);border-left:3px solid var(--p0);border-radius:0 3px 3px 0;
+  padding:10px 14px;margin:12px 0;font-size:15.5px;color:var(--ink-2);max-width:64ch}
+.bruch b{color:var(--p0);font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;display:block;margin-bottom:4px}
+.laeuft{background:var(--ok-soft);border-left:3px solid var(--ok);border-radius:0 3px 3px 0;
+  padding:10px 14px;margin:12px 0;font-size:15.5px;color:var(--ink-2);max-width:64ch}
+.laeuft b{color:var(--ok);font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;display:block;margin-bottom:4px}
+
+/* Befunde */
+article.befund{display:grid;grid-template-columns:88px 1fr;gap:0 22px;
+  border-bottom:1px solid var(--line);padding:20px 0 22px}
+.rail{display:flex;flex-direction:column;gap:7px;align-items:flex-start;padding-top:2px}
+.fid{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--ink)}
+.sev{font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  padding:3px 7px;border-radius:2px;white-space:nowrap}
+.sev.s0{background:var(--p0-soft);color:var(--p0)}
+.sev.s1{background:var(--p1-soft);color:var(--p1)}
+.sev.s2{background:var(--p2-soft);color:var(--p2)}
+.wer{font-family:var(--mono);font-size:10px;color:var(--ink-3);line-height:1.3}
+.befund .body h4{margin:0 0 8px;font-size:18px}
+.befund .body p{margin:0 0 10px;font-size:16px}
+.vorschlag{border-left:3px solid var(--accent);background:var(--surface-2);padding:10px 14px;
+  border-radius:0 3px 3px 0;margin:12px 0 0;font-size:15.5px;color:var(--ink-2);max-width:64ch}
+.vorschlag b{color:var(--accent);font-family:var(--sans);font-size:10.5px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;display:block;margin-bottom:4px}
+
+/* Modellfragen */
+.modell{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:26px 30px;margin:0 0 20px}
+.modell > h3{margin-top:0}
+.waage{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:3px;overflow:hidden;margin:16px 0}
+.waage > div{background:var(--surface-2);padding:14px 16px}
+.waage h5{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  margin:0 0 8px;color:var(--ink-3)}
+.waage ul{margin:0;padding-left:18px;font-size:15px;max-width:none}
+.waage li{margin-bottom:5px;color:var(--ink-2)}
+.urteil{border-top:2px solid var(--accent);padding-top:14px;margin-top:16px}
+.urteil h5{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  margin:0 0 8px;color:var(--accent)}
+
+/* Fragen */
+.frage{display:grid;grid-template-columns:44px 1fr;gap:0 18px;padding:18px 0;border-top:1px solid var(--line)}
+.fnum{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.frage h4{margin:0 0 7px;font-size:17.5px}
+.frage p{margin:0 0 8px;font-size:15.5px;color:var(--ink-2)}
+.meins{font-family:var(--mono);font-size:12.5px;color:var(--ink-3);border-left:2px solid var(--line-2);
+  padding-left:12px;margin-top:9px;max-width:62ch}
+.meins b{font-family:var(--sans);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:700}
+.fgruppe{font-family:var(--sans);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);margin:32px 0 0;padding-top:20px;border-top:2px solid var(--accent)}
+
+footer.foot{margin-top:56px;padding-top:22px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:11.5px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:8px 26px}
+
+@media (max-width:720px){
+  body{font-size:16px}
+  .wrap{padding:0 18px 72px}
+  article.befund{grid-template-columns:1fr;gap:0}
+  .rail{flex-direction:row;align-items:center;gap:9px;margin-bottom:10px;flex-wrap:wrap}
+  .area-head{grid-template-columns:38px 1fr;gap:12px}
+  .area-letter{font-size:24px}
+  .szene{grid-template-columns:1fr;margin-left:14px;padding-left:18px}
+  .uhr{margin-left:0}
+  .uhr::after{left:-24px}
+  .waage{grid-template-columns:1fr}
+  .modell{padding:20px 18px}
+  .frage{grid-template-columns:34px 1fr;gap:0 12px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Praxis-Durchgang · nach der Fehlerbehebung</p>
+    <h1>Wasserplan<br>in der Praxis</h1>
+    <p class="deck">Die Bugs sind weg. Jetzt die andere Frage: <b>Funktioniert die App, wenn ein Betrieb sie wirklich benutzt?</b> Ein Durchgang durch eine Woche — morgens der Produktionsleiter, tagsüber der Wassermann — abgeglichen mit dem, was die 1069 echten Journaleinträge über den Betrieb verraten. Ergebnis: 20 neue Befunde, drei Modellfragen und ein Verdacht am Fundament.</p>
+    <dl class="meta">
+      <div><dt>Grundlage</dt><dd>1069 Einträge · 99 Arbeitstage · März – August</dd></div>
+      <div><dt>Methode</dt><dd>Datenauswertung + Bedienungs-Durchgang</dd></div>
+      <div><dt>Ergebnis</dt><dd>20 Befunde · 3 Modellfragen · 20 offene Entscheidungen</dd></div>
+    </dl>
+
+    <div class="panel">
+      <div class="gauge"><span class="n">1</span><span class="l">Schiff pro Gang</span><span class="s">Median — App plant Felder</span></div>
+      <div class="gauge"><span class="n">33 %</span><span class="l">Feldabdeckung</span><span class="s">pro Arbeitstag, Median</span></div>
+      <div class="gauge warn"><span class="n">0,71</span><span class="l">Deckungsgrad</span><span class="s">beregnet ÷ Schifffläche</span></div>
+      <div class="gauge warn"><span class="n">4,7×</span><span class="l">Regelabweichung</span><span class="s">Eiägert: Soll 7 T, real 1,5 T</span></div>
+      <div class="gauge"><span class="n">80/99</span><span class="l">Tage parallel</span><span class="s">mehrere Gänge gleichzeitig</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ============ A ============ -->
+<section class="area" id="daten">
+  <div class="area-head">
+    <span class="area-letter">A</span>
+    <div>
+      <h2>Was die Daten über den Betrieb sagen</h2>
+      <span class="sub">Bevor man über die Bedienung redet: stimmen die Annahmen?</span>
+    </div>
+  </div>
+
+  <p>Ich habe die 1069 Journaleinträge nicht nur auf Fehler geprüft, sondern gefragt: <em>wie arbeitet dieser Betrieb eigentlich?</em> Drei Antworten widersprechen dem, was die App annimmt.</p>
+
+  <h3>1 · Er bewässert schiffweise, nicht feldweise</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Schiffe pro Journaleintrag</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th></tr></thead>
+    <tbody><tr><td>Einträge</td><td class="dim">101</td><td class="good">514</td><td>299</td><td>119</td><td>36</td></tr></tbody>
+  </table></div>
+  <p>Median: <strong>ein Schiff pro Gang</strong>, nie mehr als vier. Und pro Feld und Arbeitstag deckt er im Median nur <strong>33 %</strong> der Schiffe ab — von 422 Feld-Tagen war nur 70-mal das ganze Feld dran, 266-mal weniger als die Hälfte.</p>
+  <p>Die App bündelt seit der Korrektur <em>alle</em> fälligen Schiffe eines Feldes in einen Auftrag. Für Schützenhaus wären das neun Schiffe auf einmal. Das entspricht keiner einzigen Zeile im Journal.</p>
+
+  <h3>2 · Der Durchfluss ist die eigentliche Grenze</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Sprenkler gleichzeitig</th><th>Einträge</th><th>Median m³/h</th><th>je Sprenkler</th></tr></thead>
+    <tbody>
+      <tr><td>1 – 6</td><td>95</td><td>10,7</td><td>2,69</td></tr>
+      <tr><td>7 – 12</td><td>423</td><td>20,3</td><td>2,25</td></tr>
+      <tr><td>13 – 20</td><td>199</td><td>28,5</td><td>1,78</td></tr>
+      <tr><td>21 +</td><td>151</td><td>44,6</td><td class="hot">1,78</td></tr>
+    </tbody>
+  </table></div>
+  <p>Der Durchfluss wächst mit der Sprenklerzahl, aber die Leistung <em>je</em> Sprenkler fällt von 2,69 auf 1,78 m³/h — ein Druckabfall. Deshalb macht er ein bis zwei Schiffe: mehr gibt die Leitung nicht her. Die Bemerkungen bestätigen es, dort steht der Druck: <code>8 klik 4.5 bar</code>, <code>10 klik 4 bar</code>.</p>
+  <div class="bruch"><b>Konsequenz</b>Die App kennt keine Durchflussgrenze. Sie darf ein Feld mit neun Schiffen in einen Auftrag packen und rechnet die Dauer so, als liefe alles parallel mit voller Leistung. In Wirklichkeit dauert das ein Vielfaches — oder es geht gar nicht.</div>
+
+  <h3>3 · Die gelieferten Regeln beschreiben nicht, was er tut</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Schiff</th><th>Gänge</th><th>realer Abstand</th><th>Regel sagt</th><th>Faktor</th></tr></thead>
+    <tbody>
+      <tr><td>Eiägert 4</td><td>31</td><td>1,5 Tage</td><td>7 Tage</td><td class="hot">4,7×</td></tr>
+      <tr><td>Cherwis 11</td><td>25</td><td>2 Tage</td><td>0,5 Tage</td><td class="hot">4×</td></tr>
+      <tr><td>Cherwis 12 / 13</td><td>24</td><td>2 Tage</td><td>0,5 Tage</td><td class="hot">4×</td></tr>
+      <tr><td>Abag Luchs 3</td><td>28</td><td>2 Tage</td><td>1 Tag</td><td>2×</td></tr>
+      <tr><td>Förliwiesen Schopf 1</td><td>32</td><td>2 Tage</td><td>1,75 Tage</td><td class="good">1,1×</td></tr>
+      <tr><td>Bachofen 8</td><td>32</td><td>2 Tage</td><td>1,75 Tage</td><td class="good">1,1×</td></tr>
+      <tr><td>Abag Luchs 5</td><td>46</td><td>1 Tag</td><td>1 Tag</td><td class="good">1×</td></tr>
+    </tbody>
+  </table></div>
+  <p>Bei Bachofen, Schützenhaus, Förliwiesen und Abag Luchs 5 stimmt die Regel. Bei Eiägert und Cherwis liegt sie um den Faktor 4 bis 5 daneben. Die 15 Startregeln aus dem Pflichtenheft sind offenbar Wunsch- oder Hochsommerwerte, keine Beschreibung der Praxis.</p>
+  <div class="vorschlag"><b>Vorschlag</b>Die App hat 1069 Einträge und weiss es besser. Sie sollte beim Erfassen einer Regel den beobachteten Rhythmus danebenstellen: <em>„Vorgabe 1×/Woche 30 mm — beobachtet: alle 1,5 Tage, 14 mm (31 Gänge). Übernehmen?"</em> Das macht aus totem Journal eine Empfehlung.</div>
+
+  <h3>4 · Ein Feld trägt über die Saison viele Kulturen</h3>
+  <p>Eiägert: <strong>11 verschiedene Kulturen</strong> im Journal (Kabis, Erdbeeren, Kürbis, Mais, Fenchel, Lauch, Randen, Knollensellerie, Schnittlauch, Salat, „Mix"). Cherwis 5, Förliwiesen Schopf 4, Bachofen 4.</p>
+  <div class="bruch"><b>Konsequenz</b>Die App hat keinen Ernte- oder Satzwechsel. Man kann eine Kultur zuweisen und pausieren — aber es gibt keinen Weg, in zehn Sekunden zu sagen „Schiff 4 ist abgeerntet, ab Freitag steht dort Fenchel". Ohne das veraltet der Datenbestand innerhalb von Wochen, und der Plan rechnet mit Kulturen, die längst weg sind.</div>
+
+  <h3>5 · Er arbeitet fast immer parallel</h3>
+  <p>An <strong>80 von 99 Arbeitstagen</strong> überlappen sich Bewässerungen zeitlich, insgesamt 2512 überlappende Paare. Arbeitsbeginn 5 – 7 Uhr, Schwerpunkt 7 – 11 Uhr, Ende meist vor 19 Uhr. Median 9 Einträge und 4 Standorte pro Tag, Maximum 25 Einträge und 10 Standorte.</p>
+  <p>Die App verwaltet mehrere laufende Bewässerungen — das passt. Aber die Kapazitätsgrenze „8 Standorte pro Tag" ist als <em>sequenzielle</em> Grenze gedacht. Real ist der Median 4 Standorte, und die Grenze ist nicht die Zeit, sondern der Durchfluss und die Fahrerei.</p>
+</section>
+
+<!-- ============ B ============ -->
+<section class="area" id="tag">
+  <div class="area-head">
+    <span class="area-letter">B</span>
+    <div>
+      <h2>Ein Dienstag, durchgespielt</h2>
+      <span class="sub">Setup ist fertig, alle Kulturen erfasst, die App läuft seit zwei Wochen</span>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">06:30</div>
+    <div class="body">
+      <h4>Der Produktionsleiter öffnet die App</h4>
+      <p>Regenabfrage kommt automatisch. Er trägt 4 mm für Station Nord ein, wählt „gestern". Der Plan rechnet neu, drei Aufträge zeigen einen Anpassungsvorschlag. Er übernimmt zwei, den dritten nicht.</p>
+      <div class="laeuft"><b>Funktioniert</b>Die Regenlogik ist rund: Buchung auf den richtigen Tag, Vorschlag statt Automatik, letztes Wort beim Menschen.</div>
+      <div class="bruch"><b>Bricht</b>Er sieht <em>nicht</em>, was gestern tatsächlich gelaufen ist. Kein Ist-Stand, keine erledigten Aufträge, keine Abweichungen. Der ganze Rückkanal vom Wassermann fehlt — und genau den sollte die App ersetzen.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">06:40</div>
+    <div class="body">
+      <h4>Er prüft den Tagesplan</h4>
+      <p>11 Aufträge, 8 Standorte. Kapazitätswarnung schweigt. Er blättert auf morgen, übermorgen, gibt drei Tage frei.</p>
+      <div class="bruch"><b>Bricht</b>Um zu sehen, ob Cherwis diese Woche dreimal drankommt, muss er zehnmal klicken. Es fehlt die Wochenübersicht — eine Matrix Feld × Tag, auf der man den Rhythmus in einem Blick sieht. Genau die Ansicht, in der man einen Planungsfehler erkennt.</div>
+      <div class="bruch"><b>Bricht</b>Ein Auftrag umfasst „Schiffe 1, 2, 3, 4, 5, 6". Er weiss, dass sein Mann das nie an einem Tag macht. Er kann den Auftrag verschieben oder löschen, aber nicht <em>teilen</em>.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">07:00</div>
+    <div class="body">
+      <h4>Der Wassermann öffnet die Liste</h4>
+      <p>11 Karten, sortiert nach Dringlichkeit: Abag Luchs, Adlisberg Slowgrow, Förliwiesen Weber, Eichhof 1, Schützenhaus … Er sieht Menge, Dauer, Sprenklerzahl.</p>
+      <div class="laeuft"><b>Funktioniert</b>Die Karte sagt ihm jetzt drei Dinge statt zwei: 15 mm, 2 h 56 min, 34 Sprenkler. Die Sprenklerzahl ist die, die er wirklich braucht.</div>
+      <div class="bruch"><b>Bricht</b>Die Reihenfolge ist agronomisch sortiert, nicht geografisch. Adlisberg und Förliwiesen liegen nicht nebeneinander. Er fährt kreuz und quer oder sortiert im Kopf. Aufträge am <em>selben</em> Standort stehen nicht beieinander.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">07:25</div>
+    <div class="body">
+      <h4>Erster Standort, er startet</h4>
+      <p>Schiffe antippen, Uhrzeit steht, Zählerstand ist vorbelegt mit dem letzten Stopp-Stand, Sprenklerzahl vorbelegt aus der Historie. Er korrigiert die Zahl auf 12 und startet.</p>
+      <div class="bruch"><b>Bricht</b>Die Vorbelegung der Sprenklerzahl ist nur bei 9 von 33 geprüften Schiffen stabil. Cherwis 4 schwankt zwischen 13 und 47. Eine Zahl vorzuschlagen, die in zwei Dritteln der Fälle falsch ist, erzieht zum Wegklicken.</div>
+      <div class="bruch"><b>Bricht</b>„Kreisregner" / „Sektorregner" — auf Ungarisch <em>Körszórófej</em> / <em>Szektorszórófej</em>. Für einen ungelernten Saisonnier sind das zwei Wörter ohne Bild. Zwei Piktogramme wären klarer als jede Übersetzung.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">07:50</div>
+    <div class="body">
+      <h4>Er fährt weiter und startet den zweiten Standort</h4>
+      <p>Oben erscheint ein Banner: „Abag Luchs · Schiffe 4, 5 · läuft — Startzeit 07:25".</p>
+      <div class="bruch"><b>Bricht</b>Das Banner sagt, wann es <em>angefangen</em> hat. Die Zahl, die er braucht, ist eine andere: <strong>wann muss ich zurück?</strong> Die App kennt die empfohlene Dauer und die Startzeit — sie könnte „fertig um 10:21, noch 2 h 31 min" anzeigen. Tut sie nicht. Das ist die meistgebrauchte Information des ganzen Tages.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">10:30</div>
+    <div class="body">
+      <h4>Zurück am ersten Standort, er stoppt</h4>
+      <p>Zählerstand ablesen, eintippen. Die Vorschau rechnet: 3 h 05 min, 62 m³, ≈ 24,9 mm. Er speichert.</p>
+      <div class="bruch"><b>Bricht</b>Ziel waren 15 mm, gegeben wurden 24,9 mm. Niemand sagt etwas. Genauso wenig, wenn es 6 mm gewesen wären. Ein Soll-Ist-Abgleich beim Stoppen — <em>„Ziel 15 mm, erreicht 25 mm — passt das?"</em> — würde die Datenqualität und die Lernkurve des Wassermanns in einem Schritt verbessern.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">12:00</div>
+    <div class="body">
+      <h4>Ein Feld ist schon nass</h4>
+      <p>Er kommt an, der Boden ist feucht — Gewitter am Vorabend, das die Station nicht erfasst hat. Er will den Auftrag überspringen.</p>
+      <div class="bruch"><b>Bricht</b>Es gibt keinen Weg. Er kann nur starten und wieder stoppen, mit erfundenen Zahlen — oder die Karte offen lassen. Beides verdirbt die Daten. Ein „nicht nötig, war nass"-Knopf mit Grund fehlt, und mit ihm die Rückmeldung an den Chef.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">17:00</div>
+    <div class="body">
+      <h4>Feierabend, ein Gang läuft noch</h4>
+      <p>Bühler unten läuft seit 15:40. Er lässt es laufen und fährt heim.</p>
+      <div class="bruch"><b>Bricht</b>Der Eintrag bleibt für immer offen. Kein Hinweis am nächsten Morgen, keine Frage „lief das über Nacht?". Und schlimmer: der Sektor gilt als <em>nicht</em> bewässert, wird also am nächsten Tag erneut eingeplant, obwohl das Wasser gerade drauf war.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">19:30</div>
+    <div class="body">
+      <h4>Der Produktionsleiter plant den Rest der Woche</h4>
+      <p>Er öffnet die App, sieht den Plan für morgen …</p>
+      <div class="bruch"><b>Bricht</b>… und wieder nicht, was heute passiert ist. Er ruft an. Damit ist die App genau an der Stelle gescheitert, für die sie gebaut wurde.</div>
+    </div>
+  </div>
+
+  <div class="szene">
+    <div class="uhr">Freitag</div>
+    <div class="body">
+      <h4>Schiff 4 wird abgeerntet, Montag kommt Fenchel</h4>
+      <div class="bruch"><b>Bricht</b>Kein Mechanismus. Er müsste in Standorte → Feld → Kultur-Reiter → Sektor bearbeiten → Kultur ändern → Pflanzdatum setzen → Regel prüfen. Sechs Klicks tief in einem Editor, der zum Zeichnen gebaut ist. Das macht niemand nebenbei — und damit rechnet der Plan ab Montag falsch.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C ============ -->
+<section class="area" id="modell">
+  <div class="area-head">
+    <span class="area-letter">C</span>
+    <div>
+      <h2>Die drei Modellfragen</h2>
+      <span class="sub">Rohre · Sprenklerzahlen · was „mm" eigentlich heisst</span>
+    </div>
+  </div>
+
+  <div class="modell">
+    <h3>Brauchen wir zu wissen, wo die Rohre sind?</h3>
+    <div class="waage">
+      <div><h5>Dafür</h5><ul>
+        <li>Der Wassermann muss wissen, <strong>welchen Hydranten er öffnet</strong>. Bei 29 Standorten und wechselndem Saisonnier ist das echtes Wissen, das sonst nur mündlich existiert.</li>
+        <li>Ein Anschluss bestimmt, welche Schiffe <strong>zusammen laufen müssen</strong> — ein Kreisregner in der Fahrgasse zwischen 3 und 4 bewässert beide. Das ist eine harte physische Kopplung, keine Deko.</li>
+        <li>Bei Standorten mit mehreren Feldern: Verwechslungsschutz.</li>
+      </ul></div>
+      <div><h5>Dagegen</h5><ul>
+        <li>Für <strong>keine einzige Berechnung</strong> — nicht für mm, nicht für Dauer, nicht für Fälligkeit — wird die Rohrgeometrie gebraucht.</li>
+        <li>Das Einzeichnen kostet im Setup pro Feld zehn bis zwanzig Minuten. Bei 49 Feldern sind das mehrere Tage.</li>
+        <li>Die App nutzt sie heute nur für einen Hinweis bei der Freigabe.</li>
+      </ul></div>
+    </div>
+    <div class="urteil">
+      <h5>Mein Urteil</h5>
+      <p style="margin:0">Die <strong>Geometrie</strong> der Rohre ist Luxus. Was gebraucht wird, ist eine Ebene darüber: <strong>welcher Anschluss versorgt welche Schiffe</strong>. Das ist pro Feld eine Liste in zwei Minuten statt einer Zeichnung in zwanzig — und liefert genau das, was Wassermann und Planung brauchen: die Anschlussstelle als Wegpunkt und die Fahrgassen-Kopplung als Planungsregel. Die gezeichneten Rohre würde ich als optionale Ergänzung behalten, aber aus dem Pflichtteil des Setups nehmen.</p>
+    </div>
+  </div>
+
+  <div class="modell">
+    <h3>Brauchen wir die Kreis- und Sektorregner-Zahlen?</h3>
+    <p>Ja — aber sie tragen im Moment zwei Lasten, und nur eine davon halten sie aus.</p>
+    <h4>Last 1: den Durchfluss vorhersagen — das können sie</h4>
+    <p>Die Daten sind eindeutig: 1,78 – 2,69 m³/h je Sprenkler, sauber gestaffelt nach Anzahl. Daraus lässt sich die Dauer direkt ausrechnen, und der Druckabfall bei vielen Sprenklern ist sichtbar und modellierbar.</p>
+    <h4>Last 2: die beregnete Fläche bestimmen — das können sie nicht</h4>
+    <p>Die alte Formel setzt je Kreisregner 18 m × 23 m = 414 m². Gegen die tatsächlichen Schiffflächen gerechnet ergibt das:</p>
+    <div class="tblwrap"><table>
+      <thead><tr><th>Deckungsgrad (beregnet ÷ Schifffläche)</th><th>Wert</th></tr></thead>
+      <tbody>
+        <tr><td>Median über 740 Einträge</td><td class="hot">0,71</td></tr>
+        <tr><td>10 % der Einträge unter</td><td>0,43</td></tr>
+        <tr><td>90 % der Einträge unter</td><td>1,55</td></tr>
+        <tr><td>Einträge mit Deckung &lt; 0,8</td><td class="hot">409 von 740</td></tr>
+      </tbody>
+    </table></div>
+    <p>Ein sauberes Modell müsste hier bei 1,0 landen. Es streut zwischen 0,11 und über 1,5. Und die Sprenklerzahl ist pro Schiff nicht stabil — Cherwis 4 schwankt über 20 Einträge zwischen 13 und 47. Das deutet auf <strong>mehrere Sprenklerstellungen pro Gang</strong> oder auf Teilbewässerung: er stellt um, statt alles gleichzeitig laufen zu lassen.</p>
+    <div class="urteil">
+      <h5>Mein Urteil</h5>
+      <p style="margin:0">Die Sprenklerzahl behalten — als <strong>Durchflussgrösse</strong>, nicht als Flächengrösse. Zusätzlich sollte die App erfassen, ob die Sprenkler während des Gangs <strong>umgestellt</strong> wurden (eine Stellung, zwei, drei) — das erklärt die Streuung und ist eine einzige zusätzliche Zahl im Stopp-Dialog.</p>
+    </div>
+  </div>
+
+  <div class="modell">
+    <h3>Was heisst „mm" — und rechnen wir es richtig?</h3>
+    <p>Hier liegt der Verdacht am Fundament. Es gibt zwei mögliche Definitionen:</p>
+    <div class="waage">
+      <div><h5>A · auf die beregnete Fläche <span style="font-weight:400;text-transform:none;letter-spacing:0">(heute)</span></h5>
+        <p style="margin:0 0 8px;font-size:15px"><code>mm = m³ × 1000 ÷ (Sprenkler × Wurfweite)</code></p>
+        <ul>
+          <li>Entspricht der alten Betriebsformel — alle historischen Zahlen bleiben vergleichbar.</li>
+          <li>Median 14,2 mm je Gang — plausibel für „15 mm"-Regeln.</li>
+          <li>Steht und fällt mit drei geschätzten Parametern (18 / 23 / 11,5).</li>
+          <li>Sagt <em>nichts</em> darüber, ob die Fläche vollständig beregnet wurde.</li>
+        </ul>
+      </div>
+      <div><h5>B · auf die Kulturfläche</h5>
+        <p style="margin:0 0 8px;font-size:15px"><code>mm = m³ × 1000 ÷ Schifffläche</code></p>
+        <ul>
+          <li>Braucht keine Wurfweiten-Annahme, nur die Aren-Zahl aus dem Plan.</li>
+          <li>Median 9,8 mm je Gang.</li>
+          <li>Misst, was <strong>agronomisch zählt</strong>: wie viel Wasser auf dem Bestand ankommt.</li>
+          <li>Alle bisherigen Referenzwerte verschieben sich um Faktor ≈ 1,45.</li>
+        </ul>
+      </div>
+    </div>
+    <p>Der Unterschied ist nicht akademisch. Wenn die Regel „15 mm" sagt und die App nach A rechnet, das Schiff aber nur zu 71 % beregnet ist, kommen im Schnitt <strong>10,6 mm auf dem Bestand</strong> an. Nach B wäre die Zielmenge dieselbe Zahl, die der Bestand wirklich bekommt — dafür müsste der Betrieb seine gewohnten Werte neu eichen.</p>
+    <div class="urteil">
+      <h5>Mein Urteil</h5>
+      <p style="margin:0 0 10px">B ist die richtige Grösse, A ist die gewohnte. Der Ausweg: <strong>beide zeigen, in B planen.</strong> Die App rechnet intern auf die Kulturfläche und zeigt dem Admin bei jeder Regel und jedem Journaleintrag beides — <em>„15 mm auf der Fläche · 21 mm nach alter Formel"</em>. Nach einer Saison entscheidet der Betrieb selbst, welche Zahl er im Kopf haben will.</p>
+      <p style="margin:0">Und unabhängig davon: die App sollte den <strong>Deckungsgrad</strong> anzeigen. Wenn ein Gang nur 40 % der Schifffläche beregnet, ist das keine halbe Bewässerung, sondern eine ganze auf einem halben Schiff — der Rest bleibt trocken. Das ist eine agronomische Warnung, die heute niemand sieht.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D ============ -->
+<section class="area" id="befunde">
+  <div class="area-head">
+    <span class="area-letter">D</span>
+    <div>
+      <h2>20 Befunde aus der Bedienung</h2>
+      <span class="sub">keine Abstürze — Dinge, die den Nutzen kosten</span>
+    </div>
+  </div>
+
+  <article class="befund"><div class="rail"><span class="fid">P1</span><span class="sev s0">P0</span><span class="wer">Leiter</span></div>
+    <div class="body"><h4>Der Rückkanal fehlt vollständig</h4>
+      <p>Der Produktionsleiter sieht nirgends, was erledigt ist, was gerade läuft oder was abweichend gemacht wurde. Die Auftragskarte im Admin hat keinen Erledigt-Zustand, und <code>Store.db.laufend</code> wird in der ganzen Admin-Oberfläche nicht gelesen.</p>
+      <p>Damit erfüllt die App ihren Kernzweck nicht: sie ersetzt die morgendliche Ansage, aber nicht den Rapport am Abend. Er ruft weiterhin an.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Der Tagesplan bekommt eine dritte Zustandsstufe je Auftrag: offen · läuft (seit 07:25, fertig ca. 10:20) · erledigt (25 mm statt 15 mm, 3 h 05). Dazu eine kompakte Abweichungsliste: was wurde nicht gemacht, was anders.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P2</span><span class="sev s0">P0</span><span class="wer">Leiter</span></div>
+    <div class="body"><h4>Kein Ernte- und Satzwechsel</h4>
+      <p>Eiägert trug in einer Saison 11 Kulturen. Der Wechsel ist die häufigste Datenpflege-Handlung im Betrieb — und die App hat dafür keinen Weg ausser sechs Klicks tief im Zeichen-Editor.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Ein eigener Reiter „Anbau" mit einer Zeile je Schiff/Sektor: Kultur · Satz · gepflanzt · Aktion. Aktion = <em>abgeerntet</em> (Sektor wird leer, kein Wasser mehr) oder <em>neu bepflanzt</em> (Kultur + Datum in einem Dialog). Zwei Klicks statt sechs, und die Historie bleibt erhalten.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P3</span><span class="sev s1">P1</span><span class="wer">Wassermann</span></div>
+    <div class="body"><h4>Keine Endzeit für laufende Bewässerungen</h4>
+      <p>Das Banner zeigt die Startzeit. Die Zahl, die er den ganzen Tag braucht — <em>wann muss ich zurück</em> — steht nirgends, obwohl die App Startzeit und empfohlene Dauer kennt.</p>
+      <div class="vorschlag"><b>Vorschlag</b>„fertig um 10:21 · noch 2 h 31 min", und wenn die Zeit überschritten ist, farblich markiert. Das ist eine Zeile Rechnung und vermutlich die nützlichste einzelne Verbesserung für ihn.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P4</span><span class="sev s1">P1</span><span class="wer">beide</span></div>
+    <div class="body"><h4>Vergessene Gänge laufen ewig weiter</h4>
+      <p>Ein nie gestoppter Eintrag bleibt unbegrenzt offen. Keine Warnung, keine Rückfrage am Folgetag. Der Sektor gilt weiter als durstig und wird jeden Tag neu eingeplant, obwohl das Wasser läuft.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Nach der doppelten empfohlenen Dauer eine Rückfrage beim Öffnen: „Läuft seit gestern 15:40 — noch am Laufen, oder vergessen zu stoppen?" Und der Admin sieht offene Gänge in seiner Liste.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P5</span><span class="sev s1">P1</span><span class="wer">Wassermann</span></div>
+    <div class="body"><h4>Kein Weg, einen Auftrag abzulehnen</h4>
+      <p>„War schon nass", „Bestand ist geerntet", „komme heute nicht hin" — für all das gibt es nur Start und Stopp mit erfundenen Zahlen oder gar nichts.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Ein „nicht gemacht"-Knopf mit drei Gründen (war nass · nicht nötig · keine Zeit) plus Freitext. Landet beim Admin und im Journal als Nicht-Ereignis mit Grund — agronomisch wertvoller als ein leerer Tag.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P6</span><span class="sev s1">P1</span><span class="wer">beide</span></div>
+    <div class="body"><h4>Kein Soll-Ist-Abgleich beim Stoppen</h4>
+      <p>Ziel 15 mm, gegeben 25 mm — die App rechnet es aus und sagt nichts. Genauso bei 6 mm.</p>
+      <div class="vorschlag"><b>Vorschlag</b>In der Stopp-Vorschau die Zielmenge daneben und eine Ampel bei mehr als ±30 % Abweichung. Für den Wassermann eine Lernhilfe, für den Betrieb Datenqualität.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P7</span><span class="sev s1">P1</span><span class="wer">Planung</span></div>
+    <div class="body"><h4>Auftragsgrösse ohne Durchflussgrenze</h4>
+      <p>Die App darf neun Schiffe in einen Auftrag packen. Das Journal kennt maximal vier, im Median eins. Der Grund ist die Leitung: je Sprenkler fällt die Leistung von 2,69 auf 1,78 m³/h.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Eine Obergrenze je Auftrag — entweder in Schiffen (aus der Historie des Feldes) oder besser in Sprenklern beziehungsweise m³/h. Grössere Fälligkeiten werden in mehrere Aufträge zerlegt, die die Entzerrung dann über die Tage verteilt.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P8</span><span class="sev s1">P1</span><span class="wer">Agronomie</span></div>
+    <div class="body"><h4>Die Wasserbilanz ist saisonblind</h4>
+      <p>Das Defizit wächst um einen festen Betrag pro Tag, der aus der Regel kommt. Verdunstung, Temperatur, Wind und Entwicklungsstadium kommen nicht vor. Eine „15 mm täglich"-Regel ist implizit eine Hochsommerregel; im Mai ist sie deutlich zu viel, in einer Hitzewoche zu wenig.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Kein Wetterdienst, sondern ein Regler, den der Admin einmal pro Woche stellt: <em>kühl / normal / heiss / Hitze</em> → Faktor 0,7 / 1,0 / 1,3 / 1,6 auf den Tagesbedarf. Das ist die 80/20-Lösung und bleibt nachvollziehbar. Wer später mehr will, hängt eine ETo-Quelle daran.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P9</span><span class="sev s1">P1</span><span class="wer">Leiter</span></div>
+    <div class="body"><h4>Keine Wochenübersicht</h4>
+      <p>Der Rhythmus eines Feldes lässt sich nur durch zehnmaliges Weiterklicken erkennen. Genau in dieser Ansicht sieht man aber, ob die Planung Sinn ergibt.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Eine Matrix Feld × Tag über den Horizont, ein Punkt je geplantem Gang, Farbe nach Kultur. Klick auf einen Punkt springt in den Tag. Zusätzlich eine Zeile „zuletzt bewässert vor n Tagen".</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P10</span><span class="sev s1">P1</span><span class="wer">Wassermann</span></div>
+    <div class="body"><h4>Tagesliste nicht nach Fahrtroute</h4>
+      <p>Sortiert nach Priorität und Überfälligkeit. Aufträge am selben Standort stehen nicht beieinander.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Nach Standort gruppieren, Standorte in einer Reihenfolge, die der Admin einmal festlegt (Fahrtreihenfolge). Innerhalb des Standorts nach Dringlichkeit. Dazu eine Kopfzeile je Standort mit Gesamtdauer.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P11</span><span class="sev s1">P1</span><span class="wer">Modell</span></div>
+    <div class="body"><h4>Deckungsgrad wird nicht geprüft</h4>
+      <p>Bei 409 von 740 Einträgen liegt die beregnete Fläche unter 80 % der Schifffläche, teils bei 11 %. Die App rechnet daraus trotzdem eine mm-Zahl fürs ganze Schiff.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Deckungsgrad je Gang berechnen und anzeigen. Unter 60 %: Hinweis „nur ein Teil des Schiffs beregnet — Rest bleibt trocken". Das ist auch die beste Sonde, um herauszufinden, was in den Daten wirklich steckt.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P12</span><span class="sev s1">P1</span><span class="wer">Leiter</span></div>
+    <div class="body"><h4>Regeln werden nicht aus den Daten vorgeschlagen</h4>
+      <p>Die App kennt für Eiägert 4 einunddreissig Gänge mit Median-Abstand 1,5 Tagen — und schlägt trotzdem die Tabellenregel „1×/Woche" vor, die um Faktor 4,7 danebenliegt.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Im Regel-Dialog den beobachteten Rhythmus und die beobachtete Menge daneben, mit Anzahl der Gänge als Verlässlichkeitsmass, und einem Knopf „beobachteten Wert übernehmen".</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P13</span><span class="sev s2">P2</span><span class="wer">Wassermann</span></div>
+    <div class="body"><h4>Sprenkler-Vorbelegung ist meist falsch</h4>
+      <p>Nur 9 von 33 geprüften Schiffen haben eine stabile Sprenklerzahl. Eine Zahl vorzuschlagen, die in zwei Dritteln der Fälle nicht stimmt, erzieht dazu, sie ungeprüft zu bestätigen.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Statt einer Zahl eine Spanne mit Häufigkeit: „meist 11 (7 – 13)". Und erst dann eine feste Vorbelegung, wenn die letzten drei Gänge übereinstimmen.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P14</span><span class="sev s2">P2</span><span class="wer">Leiter</span></div>
+    <div class="body"><h4>Regen nur pro Station, nicht korrigierbar</h4>
+      <p>Alle Standorte einer Station bekommen denselben Wert. Bei Gewittern ist das regelmässig falsch, und es gibt keinen Weg, für einen einzelnen Standort abzuweichen.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Nach dem Erfassen eine aufklappbare Liste der betroffenen Standorte, jeder mit überschreibbarem Wert. Vorbelegt mit dem Stationswert.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P15</span><span class="sev s2">P2</span><span class="wer">Modell</span></div>
+    <div class="body"><h4>Druck und Düse werden nicht erfasst</h4>
+      <p>Die wenigen Bemerkungen im Journal drehen sich fast alle darum: <code>8 klik 4.5 bar</code>, <code>10 klik 4 bar</code>. Der Betrieb arbeitet mit diesen Grössen, die App kennt sie nicht — dabei erklären sie einen Teil der Streuung im Durchfluss.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Zwei optionale Zahlenfelder im Stopp-Dialog (Druck in bar, Düse/„klik"), vorbelegt aus dem letzten Gang. Erst einmal nur sammeln — nach einer Saison zeigt sich, ob sie die Dauerprognose verbessern.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P16</span><span class="sev s2">P2</span><span class="wer">Modell</span></div>
+    <div class="body"><h4>Mehrere Wasseruhren je Standort</h4>
+      <p>Im Journal steht „Wasseruhr Imhof" als Bemerkung — es gibt offenbar mehr als einen Zähler. Das Modell kennt genau einen je Standort, und die Zählerstand-Vorbelegung setzt das voraus.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Wasseruhren als eigene kleine Liste je Standort. Der Wassermann wählt beim Start die Uhr, wenn es mehr als eine gibt — sonst bleibt es unsichtbar.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P17</span><span class="sev s2">P2</span><span class="wer">Leiter</span></div>
+    <div class="body"><h4>Aufträge lassen sich nicht teilen</h4>
+      <p>Der Admin kann verschieben, anpassen, löschen — aber nicht sagen „Schiffe 1 – 3 heute, 4 – 6 morgen".</p>
+      <div class="vorschlag"><b>Vorschlag</b>Im Anpassen-Dialog ein „Auftrag teilen": Schiffe antippen, der Rest wandert auf den Folgetag. Zusammen mit P7 die eigentliche Antwort auf zu grosse Aufträge.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P18</span><span class="sev s2">P2</span><span class="wer">Wassermann</span></div>
+    <div class="body"><h4>Fachbegriffe ohne Bild</h4>
+      <p>„Kreisregner" und „Sektorregner" sind für einen ungelernten Saisonnier zwei Wörter ohne Anschauung, auch übersetzt.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Zwei kleine Piktogramme (Vollkreis / Halbkreis) neben den Eingabefeldern. Bild schlägt Übersetzung.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P19</span><span class="sev s2">P2</span><span class="wer">Konzept</span></div>
+    <div class="body"><h4>Der Wassermann sieht eine Grösse, die er nicht steuert</h4>
+      <p>Die Karte führt mit „15 mm". Er steuert aber Zeit und Sprenklerzahl — mm ist ein Ergebnis. Für den Chef ist mm die richtige Sprache, für ihn nicht.</p>
+      <div class="vorschlag"><b>Vorschlag</b>Auf der Wassermann-Karte Dauer und Sprenkler gross, mm klein als Kontext. Beim Stoppen dann mm gross, damit er die Rückkopplung sieht.</div>
+    </div></article>
+
+  <article class="befund"><div class="rail"><span class="fid">P20</span><span class="sev s2">P2</span><span class="wer">Daten</span></div>
+    <div class="body"><h4>Kultur „Mix" hat kein Zuhause</h4>
+      <p>Im Journal taucht „Mix" auf — mehrere Kulturen auf einem Schiff ohne getrennte Sektoren. Das Modell verlangt entweder eine Kultur fürs ganze Schiff oder eingezeichnete Sektoren.</p>
+      <div class="vorschlag"><b>Vorschlag</b>„Mix" als reguläre Kulturart mit eigener Regel zulassen — die pragmatische Antwort für Restflächen, die niemand einzeichnen will.</div>
+    </div></article>
+</section>
+
+<footer class="foot">
+  <span>Datengrundlage: <code>data/journal.json</code> · 1069 Einträge</span>
+  <span>Auswertung: <code>tools/analyse_praxis.js</code>, <code>tools/analyse2.js</code></span>
+  <span>Vorgänger: Befundbericht mit 69 behobenen Fehlern</span>
+</footer>
+
+</div>
