@@ -452,6 +452,14 @@ const Store = {
   schiffName(s){ return s && s.implizit ? T('ganzesFeld') : (T('schiff')+' '+(s?s.nummer:'?')); },
   /* echte, nummerierte Schiffe (für Zählungen in der Oberfläche) */
   echteSchiffe(f){ return f.schiffe.filter(s=>!s.implizit); },
+  /* Sektor über seine Id finden. Der Index _sch zeigt auf Schiffe, nicht auf
+     Sektoren; ohne diesen Weg sucht jede Stelle selbst durch alle Felder. */
+  sektorNach(sektorId){
+    for(const f of this.db.felder)
+      for(const s of f.schiffe)
+        for(const k of (s.sektoren||[])) if(k.id===sektorId) return k;
+    return null;
+  },
   schiffZahl(){ return this.db.felder.reduce((a,f)=>a+this.echteSchiffe(f).length,0); },
   /* Einheit der Hauptwasseruhr eines Standorts (Pflichtenheft §3) */
   uhrLabel(standortId){

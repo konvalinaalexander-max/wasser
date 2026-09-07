@@ -253,6 +253,119 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
     AW.tage30<=AW.gaenge && AW.alles>=AW.gaenge && AW.leerZustandBrauchbar,
     {t30:AW.tage30, saison:AW.gaenge, alles:AW.alles, leerOk:AW.leerZustandBrauchbar});
 
+  /* ---- Klärfall auflösen: die drei Wege müssen wirken ---- */
+  const KL=await pg.evaluate(()=>{
+    const o={}, heute=D.today();
+    Engine.planNeu();
+    const finde=()=>(Store.db.plan[heute]||{auftraege:[]}).auftraege
+      .filter(a=>a.quelle==='auto' && a.rueckstand);
+    const a=finde()[0];
+    if(!a) return {kein:true};
+    o.vorher=finde().length;
+
+    /* Weg 1 — Gang nachtragen */
+    const jVorher=Store.db.journal.length;
+    Admin._klaer={datum:heute, auftragId:a.id};
+    Admin.klaerGangNachtragen();
+    document.getElementById('kgDatum').value=heute;
+    Admin.klaerGangSpeichern();
+    o.journalGewachsen=Store.db.journal.length===jVorher+1;
+    const sek=Store.db._sch[a.schiffIds[0]].schiff.sektoren.find(k=>a.sektorIds.includes(k.id));
+    o.letzteGesetzt = sek && sek.letzteBewaesserung===heute;
+    /* Auf SEKTOR-Ebene prüfen, nicht auf Auftragsebene: ein Auftrag bündelt
+       Feld + Kultur, andere Sektoren desselben Feldes erzeugen denselben
+       Schlüssel weiter. Entscheidend ist, dass DIESE Sektoren raus sind. */
+    const imRueckstand=()=>new Set(Object.values(Store.db.plan)
+      .flatMap(pp=>pp.auftraege).filter(x=>x.rueckstand).flatMap(x=>x.sektorIds||[]));
+    const rs1=imRueckstand();
+    o.keinRueckstandMehr = a.sektorIds.every(id=>!rs1.has(id));
+
+    /* Weg 3 — Kultur abgeräumt */
+    const b=finde()[0];
+    if(b){
+      const schiff=Store.db._sch[b.schiffIds[0]].schiff;
+      const vorherSek=(schiff.sektoren||[]).filter(k=>k.kulturId).length;
+      Admin._klaer={datum:heute, auftragId:b.id};
+      Admin.klaerAbgeraeumt(); window._frageFn();
+      const nachherSek=(schiff.sektoren||[]).filter(k=>k.kulturId).length;
+      o.kulturWeg = nachherSek < vorherSek;
+      const alleSek=new Set(Object.values(Store.db.plan)
+        .flatMap(pp=>pp.auftraege).flatMap(x=>x.sektorIds||[]));
+      o.auftragWeg = b.sektorIds.every(id=>!alleSek.has(id));
+    } else { o.kulturWeg=true; o.auftragWeg=true; }
+
+    /* Weg 2 — Regel öffnen (nur dass der Dialog kommt) */
+    const c=finde()[0] || a;
+    Admin._klaer={datum:heute, auftragId:c.id};
+    Admin.klaerRegel();
+    o.regelDialog = !!document.getElementById('reMm');
+    closeModal();
+    return o;
+  });
+  /* ---- Freigegebene Tage: Anzeige darf nachgeführt werden, der Plan nicht ---- */
+  const FG=await pg.evaluate(()=>{
+    const heute=D.today();
+    Admin.freigabe(heute,true);
+    Engine.planNeu();
+    const vorher=(Store.db.plan[heute]||{auftraege:[]}).auftraege
+      .map(a=>[a.key, a.zielMm, a.dauerMin, a.erledigt]).sort();
+    /* alles anfassen, was die Bilanz verschiebt */
+    Store.db.journal.push({id:uid('j'), datum:heute, feldJournal:'__test__',
+      schiffRoh:'', schiffe:[], kultur:null, dauerMin:null, m3:null, quelle:'app'});
+    Store.changed('journal');
+    for(let i=0;i<3;i++) Engine.planNeu();
+    const nachher=(Store.db.plan[heute]||{auftraege:[]}).auftraege
+      .map(a=>[a.key, a.zielMm, a.dauerMin, a.erledigt]).sort();
+    Store.db.journal=Store.db.journal.filter(j=>j.feldJournal!=='__test__');
+    Store.changed('journal');
+    return {gleich: JSON.stringify(vorher)===JSON.stringify(nachher),
+            n:vorher.length, freigegeben:!!Store.db.plan[heute].freigegeben};
+  });
+  t('freigegebener Tag behält Umfang, Menge und Dauer',
+    FG.gleich && FG.freigegeben, FG);
+
+  t('Klärfall lässt sich auf allen drei Wegen auflösen',
+    KL.kein || (KL.journalGewachsen && KL.letzteGesetzt && KL.keinRueckstandMehr
+                && KL.kulturWeg && KL.auftragWeg && KL.regelDialog), KL);
+
+  /* ---- Kulturphasen greifen nur mit Pflanzdatum ---- */
+  const PH=await pg.evaluate(()=>{
+    const o={}, heute=D.today();
+    const e0=Store.sektoren().find(e=>e.sektor.kulturId && Store.regel(e.feld.id,e.sektor.kulturId));
+    if(!e0) return {kein:true};
+    const key=Store.regelKey(e0.feld.id, e0.sektor.kulturId);
+    const alt=JSON.parse(JSON.stringify(Store.db.regeln[key]));
+    const altDatum=e0.sektor.pflanzdatum;
+
+    /* Grundregel 30 mm alle 7 Tage, Anwachsphase 8 mm alle 2 Tage */
+    Store.setRegel(e0.feld.id, e0.sektor.kulturId, {anzahl:1, einheit:'frei', tage:7, mm:30,
+      zeiten:[], phasen:[{vonTag:0, bisTag:20, anzahl:1, einheit:'frei', tage:2, mm:8}]});
+
+    e0.sektor.pflanzdatum=null; Store.changed('kultur');
+    o.problemErkannt = Engine.probleme().phasenOhneDatum.some(x=>x.sektor.id===e0.sektor.id);
+    const ohne=Engine.bilanz(e0, heute);
+    o.mengeOhneDatum = ohne? ohne.menge : null;
+
+    /* frisch gepflanzt: die Phase muss greifen */
+    e0.sektor.pflanzdatum=D.add(heute,-5); Store.changed('kultur');
+    const mit=Engine.bilanz(e0, heute);
+    o.mengeMitDatum = mit? mit.menge : null;
+    o.intervallMitDatum = mit? mit.intervall : null;
+
+    /* alt genug: die Phase ist vorbei, die Grundregel gilt wieder */
+    e0.sektor.pflanzdatum=D.add(heute,-60); Store.changed('kultur');
+    const spaet=Engine.bilanz(e0, heute);
+    o.mengeSpaet = spaet? spaet.menge : null;
+
+    o.phaseGreift = o.mengeOhneDatum===30 && o.mengeMitDatum===8
+                    && o.intervallMitDatum===2 && o.mengeSpaet===30;
+
+    Store.db.regeln[key]=alt; e0.sektor.pflanzdatum=altDatum||null; Store.changed('kultur');
+    return o;
+  });
+  t('Kulturphasen greifen nur mit Pflanzdatum, und dann richtig',
+    PH.kein || (PH.phaseGreift && PH.problemErkannt), PH);
+
   /* ---- Flächen eintragen ---- */
   const FL=await pg.evaluate(()=>{
     const o={};

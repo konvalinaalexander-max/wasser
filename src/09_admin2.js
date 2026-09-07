@@ -452,7 +452,7 @@ Object.assign(Admin, {
           <option value="__neu">＋ neue Kultur anlegen…</option>
         </select></div>
        <div class="grid2">
-        <div class="field"><label>Steht dort seit</label>
+        <div class="field"><label>Pflanzdatum</label>
           <input class="inp" id="skDatum" type="date" value="${k?.pflanzdatum||''}"></div>
         <div class="field"><label>Priorität</label>
           <select class="inp" id="skPrio">${['normal','hoch','niedrig'].map(x=>
@@ -460,6 +460,10 @@ Object.assign(Admin, {
        <div class="field"><label>Satz-Bezeichnung (optional)</label>
          <input class="inp" id="skSatz" value="${esc(k?.satz||'')}" placeholder="z.B. Satz 34-877">
          <div class="tiny dim" style="margin-top:4px">Erscheint in der Sektorliste und auf der Karte des Wassermanns.</div></div>
+       <div class="tiny dim" style="margin:-4px 0 12px">Das Pflanzdatum ist nicht nur Information:
+         daran zählen die <b>Kulturphasen</b> der Regel. Ohne Datum gilt immer die Grundregel,
+         auch wenn Phasen hinterlegt sind — der Mehrbedarf beim Anwachsen fällt dann weg.
+         Ohne Historie dient es ausserdem als Startpunkt der Wasserbilanz.</div>
        <div id="skRegelBox"></div>
        <hr class="sep">
        <label class="row" style="gap:9px"><input type="checkbox" id="skPause" ${k?.pausiert?'checked':''}
@@ -536,6 +540,163 @@ Object.assign(Admin, {
     if(FeldEditor.ctx) FeldEditor.render(); else this.render();
     toast('Kultur erfasst');
   },
+  /* --- Pflanzdaten sammeln ------------------------------------------
+     Die Anwachsphase ist im Gartenbau der stärkste Treiber des Wasserbedarfs,
+     und der Backtest zeigt genau dieses Muster: nach einem Gang am Vortag ist
+     ein Schiff 2,3-fach so wahrscheinlich wieder dran. Das Modell kann das nur
+     abbilden, wenn es weiss, wann gepflanzt wurde. */
+  pflanzdatenDialog(){
+    const pr=Engine.probleme();
+    const alle=Store.sektoren().filter(e=>e.sektor.kulturId);
+    const ohne=pr.ohnePflanzdatum;
+    const mitPhasen=new Set(pr.phasenOhneDatum.map(x=>x.sektor.id));
+    /* nach Feld gruppieren, Sektoren mit Phasenregel zuerst */
+    const nachFeld={};
+    ohne.forEach(x=>(nachFeld[x.feld.id]=nachFeld[x.feld.id]||{feld:x.feld, zeilen:[]}).zeilen.push(x));
+    const gruppen=Object.values(nachFeld).sort((a,b)=>{
+      const ap=a.zeilen.some(z=>mitPhasen.has(z.sektor.id))?0:1;
+      const bp=b.zeilen.some(z=>mitPhasen.has(z.sektor.id))?0:1;
+      return ap-bp || b.zeilen.length-a.zeilen.length;
+    });
+
+    openModal('Pflanzdaten nachtragen',
+      `<p class="muted" style="margin-top:0">Ab dem Pflanzdatum zählen die Kulturphasen einer Regel.
+        Ohne Datum gilt immer die Grundregel — der Mehrbedarf beim Anwachsen fällt weg. Ohne
+        Historie ist es ausserdem der Startpunkt der Wasserbilanz.</p>
+       <div class="${ohne.length?'infobox':'okbox'}">
+         ${alle.length-ohne.length} von ${alle.length} Sektoren mit Kultur haben ein Pflanzdatum.
+         ${pr.phasenOhneDatum.length?`<b>Bei ${pr.phasenOhneDatum.length} davon hat die Regel
+           Kulturphasen hinterlegt, die ohne Datum wirkungslos bleiben</b> — die stehen oben.`:''}</div>
+       ${ohne.length?`<div class="scrollx" style="max-height:50vh;overflow-y:auto;margin-top:10px">
+         <table class="tb"><tbody>${gruppen.map(g=>
+           `<tr><td colspan="3" style="padding-top:12px"><b class="tiny"
+              style="text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)">${esc(g.feld.name)}</b></td></tr>`
+           + g.zeilen.map(z=>`<tr>
+               <td>${esc(Store.schiffName(z.schiff))}${z.sektor.satz?' · '+esc(z.sektor.satz):''}</td>
+               <td class="tiny dim">${esc(z.kultur?z.kultur.name:'?')}${
+                 mitPhasen.has(z.sektor.id)?' <span class="chip a">Phasen wirkungslos</span>':''}</td>
+               <td><input class="inp" style="width:150px;padding:5px 7px" type="date"
+                 onchange="Admin.pflanzdatumSetzen('${z.schiff.id}','${z.sektor.id}',this.value)"></td>
+             </tr>`).join('')).join('')}</tbody></table></div>`:''}`,
+      `<button class="btn pri" onclick="closeModal();Admin.render()">Fertig</button>`, true);
+  },
+  pflanzdatumSetzen(schiffId, sektorId, wert){
+    const info=Store.db._sch[schiffId]; if(!info) return;
+    const k=(info.schiff.sektoren||[]).find(x=>x.id===sektorId); if(!k) return;
+    k.pflanzdatum = D.ok(wert) ? wert : null;
+    Store.changed('kultur');
+  },
+
+  /* --- Klärfall auflösen --------------------------------------------
+     Ein als Rückstand markierter Auftrag ist fast nie Wasserbedarf. In der
+     Historie werden Schiffe mit mehr als dem 2,5-fachen Rückstand nur in 16 %
+     der Fälle bewässert, solche im Takt in 52 %. Es gibt genau drei Ursachen,
+     und für jede braucht es einen Knopf — sonst bleibt die Markierung stehen
+     und der Plan verstopft. */
+  klaerfall(datum, auftragId){
+    const tp=Store.db.plan[datum]||{auftraege:[]};
+    const a=tp.auftraege.find(x=>x.id===auftragId); if(!a) return;
+    const feld=Store.feld(a.feldId), kultur=Store.kultur(a.kulturId);
+    const seit=a.letzteBew? D.diff(a.letzteBew, datum) : null;
+    this._klaer={datum, auftragId};
+    openModal('Klärfall · '+(feld?feld.name:'?')+' · '+(kultur?kultur.name:'?'),
+      `<p class="muted" style="margin-top:0">Dieser Auftrag liegt beim
+        <b>${(a.dringlichkeit||1).toFixed(1)}-fachen</b> seiner Regelmenge${
+        seit!=null?`, der letzte erfasste Gang ist ${seit} Tage her`:''}.
+        So grosse Rückstände sind erfahrungsgemäss kein Wasserbedarf, sondern eine von drei
+        Ursachen.</p>
+       <div class="lrow" style="cursor:pointer" onclick="Admin.klaerGangNachtragen()">
+         <span class="lmain"><b>Der Gang wurde gemacht, aber nicht aufgeschrieben</b>
+           <span>Trägt einen Journaleintrag nach. Das Defizit verschwindet, die Fläche bleibt im Plan.</span></span>
+         <span class="arw">›</span></div>
+       <div class="lrow" style="cursor:pointer;margin-top:8px" onclick="Admin.klaerRegel()">
+         <span class="lmain"><b>Die Regel passt nicht zur Praxis</b>
+           <span>Öffnet die Regel. ${esc(Admin.regelText(Store.regel(a.feldId,a.kulturId)))} —
+             wenn so nie bewässert wird, wächst hier dauerhaft ein Defizit, das nie abgebaut wird.</span></span>
+         <span class="arw">›</span></div>
+       <div class="lrow" style="cursor:pointer;margin-top:8px" onclick="Admin.klaerAbgeraeumt()">
+         <span class="lmain"><b>Die Kultur steht nicht mehr da</b>
+           <span>Entfernt die Kultur von ${a.sektorIds.length} Sektor${a.sektorIds.length===1?'':'en'}.
+             Die Fläche verschwindet aus dem Plan, bis wieder etwas eingetragen wird.</span></span>
+         <span class="arw">›</span></div>`,
+      `<button class="btn" onclick="closeModal()">Später</button>`);
+  },
+  klaerRegel(){
+    const {datum, auftragId}=this._klaer||{};
+    const a=(Store.db.plan[datum]||{auftraege:[]}).auftraege.find(x=>x.id===auftragId);
+    if(a) this.regelBearbeiten(a.feldId, a.kulturId);
+  },
+  klaerAbgeraeumt(){
+    const {datum, auftragId}=this._klaer||{};
+    const a=(Store.db.plan[datum]||{auftraege:[]}).auftraege.find(x=>x.id===auftragId); if(!a) return;
+    const feld=Store.feld(a.feldId), kultur=Store.kultur(a.kulturId);
+    frage('Kultur entfernen?',
+      `<b>${esc(kultur?kultur.name:'?')}</b> wird von ${a.sektorIds.length}
+       Sektor${a.sektorIds.length===1?'':'en'} auf <b>${esc(feld?feld.name:'?')}</b> entfernt.
+       Diese Fläche wird dann nicht mehr eingeplant, bis wieder eine Kultur eingetragen ist.
+       <br><br><span class="tiny dim">Die Regel bleibt bestehen und gilt wieder, sobald dieselbe
+       Kultur dort erneut steht. Das Journal bleibt unverändert.</span>`,
+      'Kultur entfernen',
+      ()=>{
+        const ids=new Set(a.sektorIds);
+        (a.schiffIds||[]).forEach(sid=>{ const i=Store.db._sch[sid]; if(!i) return;
+          i.schiff.sektoren=(i.schiff.sektoren||[]).filter(k=>{
+            if(!ids.has(k.id)) return true;
+            if(k.polygon){ k.kulturId=null; k.pflanzdatum=null; k.satz=null;
+                           k.letzteBewaesserung=null; return true; }
+            return false;
+          });
+        });
+        Store.changed('kultur'); this.render(); toast('Kultur entfernt');
+      }, true);
+  },
+  klaerGangNachtragen(){
+    const {datum, auftragId}=this._klaer||{};
+    const a=(Store.db.plan[datum]||{auftraege:[]}).auftraege.find(x=>x.id===auftragId); if(!a) return;
+    const feld=Store.feld(a.feldId);
+    openModal('Gang nachtragen · '+(feld?feld.name:'?'),
+      `<p class="muted" style="margin-top:0">Der Eintrag landet im Journal wie ein Gang des
+        Wassermanns und setzt die letzte Bewässerung der betroffenen Sektoren.</p>
+       <div class="grid2">
+         <div class="field"><label>Datum</label>
+           <input class="inp" id="kgDatum" type="date" value="${D.today()}" max="${D.today()}"></div>
+         <div class="field"><label>Menge (m³, optional)</label>
+           <input class="inp" id="kgM3" type="number" placeholder="unbekannt"></div>
+       </div>
+       <div class="grid2">
+         <div class="field"><label>Dauer (min, optional)</label>
+           <input class="inp" id="kgDauer" type="number" placeholder="unbekannt"></div>
+         <div class="field"><label>Sprenkler (optional)</label>
+           <input class="inp" id="kgRegner" type="number" placeholder="unbekannt"></div>
+       </div>
+       <div class="tiny dim">Ohne Menge, Dauer und Sprenklerzahl zählt der Eintrag nur als Termin —
+         er verschiebt die Fälligkeit, fliesst aber in keinen Erfahrungswert ein. Das ist richtig
+         so: ein Gang, an den sich niemand genau erinnert, soll das Modell nicht verstellen.</div>`,
+      `<button class="btn" onclick="closeModal()">Abbrechen</button>
+       <button class="btn pri" onclick="Admin.klaerGangSpeichern()">Nachtragen</button>`);
+  },
+  klaerGangSpeichern(){
+    const {datum, auftragId}=this._klaer||{};
+    const a=(Store.db.plan[datum]||{auftraege:[]}).auftraege.find(x=>x.id===auftragId); if(!a) return;
+    const d=$('#kgDatum').value;
+    if(!D.ok(d)){ toast('Bitte ein gültiges Datum wählen'); return; }
+    if(d>D.today()){ toast('Ein Gang in der Zukunft lässt sich nicht nachtragen'); return; }
+    const feld=Store.feld(a.feldId);
+    const m3=num($('#kgM3').value), dauer=num($('#kgDauer').value), regner=num($('#kgRegner').value);
+    Store.db.journal.push({ id:uid('j'), datum:d,
+      feldJournal:Engine.journalNameFuer(feld, true),
+      schiffRoh:(a.nummern||[]).join(', '), schiffe:(a.nummern||[]).map(String),
+      kultur:Store.kultur(a.kulturId)?.name||null,
+      startZeit:null, stopZeit:null, ueberNacht:false,
+      dauerMin:dauer||null, startM3:null, stopM3:null, m3:m3||null,
+      kreisregner:regner||null, sektorregner:null,
+      bemerkung:'nachgetragen', quelle:'app' });
+    const ids=new Set(a.sektorIds);
+    (a.schiffIds||[]).forEach(sid=>{ const i=Store.db._sch[sid]; if(!i) return;
+      (i.schiff.sektoren||[]).forEach(k=>{ if(ids.has(k.id)) k.letzteBewaesserung=d; }); });
+    closeModal(); Store.changed('journal'); this.render(); toast('Nachgetragen');
+  },
+
   kulturEntfernen(fid,sid,kid){
     const f=Store.feld(fid), s=f.schiffe.find(x=>x.id===sid);
     const k=s.sektoren.find(x=>x.id===kid);
@@ -556,6 +717,21 @@ Object.assign(Admin, {
         <div class="tiny" style="margin-top:6px;color:var(--ink-2)">${
           [...new Map(pr.ohneRegel.map(x=>[x.feld.id+'|'+x.sektor.kulturId,x])).values()].slice(0,8)
             .map(x=>`<button class="btn sm" style="margin:3px 4px 0 0" onclick="Admin.regelBearbeiten('${x.feld.id}','${x.sektor.kulturId}')">${esc(x.feld.name)} · ${esc(x.kultur?x.kultur.name:'?')}</button>`).join('')}</div>`;
+      p.appendChild(b);
+    }
+    if(pr.phasenOhneDatum.length){
+      const b=el('div','warnbox');
+      b.innerHTML=`<b>${pr.phasenOhneDatum.length} Sektor${pr.phasenOhneDatum.length===1?'':'en'}
+        mit Kulturphasen, aber ohne Pflanzdatum.</b> Die Phasen greifen dort nicht — gezählt wird
+        ab dem Pflanzdatum, und ohne Datum gilt immer die Grundregel.
+        <button class="btn sm" style="margin-left:8px" onclick="Admin.pflanzdatenDialog()">Nachtragen</button>`;
+      p.appendChild(b);
+    } else if(pr.ohnePflanzdatum.length){
+      const b=el('div','infobox');
+      b.innerHTML=`${pr.ohnePflanzdatum.length} von ${Store.sektoren().filter(e=>e.sektor.kulturId).length}
+        Sektoren haben kein Pflanzdatum. Nötig ist es erst, wenn eine Regel Kulturphasen bekommt —
+        aber es ist auch der Startpunkt der Wasserbilanz, wo Historie fehlt.
+        <button class="btn sm ghost" style="margin-left:8px" onclick="Admin.pflanzdatenDialog()">Nachtragen</button>`;
       p.appendChild(b);
     }
     if(pr.verwaisteRegeln.length){
@@ -696,6 +872,14 @@ Object.assign(Admin, {
        <div class="sec-title">Kulturphasen (optional)</div>
        <div class="tiny dim" style="margin-bottom:9px">Etwa für Jungpflanzen, die häufiger aber weniger Wasser brauchen.
          Gezählt in Tagen ab Pflanzdatum. Ohne Phasen gilt immer die Grundregel.</div>
+       ${(()=>{ const ohne=Engine.probleme().ohnePflanzdatum
+                  .filter(x=>x.feld.id===sid && x.sektor.kulturId===kid).length;
+                if(!ohne) return '';
+                return `<div class="warnbox" style="margin-bottom:9px">${ohne} Sektor${ohne===1?'':'en'}
+                  mit dieser Kultur ${ohne===1?'hat':'haben'} kein Pflanzdatum. Phasen, die du hier
+                  einträgst, greifen dort <b>nicht</b> — gezählt wird ab dem Pflanzdatum.
+                  <button class="btn sm" style="margin-left:8px"
+                    onclick="closeModal();Admin.pflanzdatenDialog()">Pflanzdaten nachtragen</button></div>`;})()}
        <div id="rePhasen">${ph}</div>
        <button class="btn sm" onclick="Admin.phaseHinzu()">+ Phase</button>`,
       `<button class="btn" onclick="closeModal()">Abbrechen</button>

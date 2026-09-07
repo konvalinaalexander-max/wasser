@@ -349,7 +349,8 @@ const Admin = {
             a.regenStandortMm} mm Regen zählen nicht</span>`:''}
         ${a.rueckstand?`<span class="chip a" title="Der Rückstand beträgt das ${
           (a.dringlichkeit||1).toFixed(1)}-fache der Regelmenge. Ab dem ${
-          Engine.RUECKSTAND_AB}-fachen ist erfahrungsgemäss nicht der Wasserbedarf die Ursache: In der Historie wurden Schiffe mit so grossem Rückstand nur in 16 % der Fälle bewässert, solche im Takt in 52 %. Prüfen: Kultur noch da? Regel zu eng? Gang nicht eingetragen?">Rückstand — Regel prüfen</span>`:''}
+          Engine.RUECKSTAND_AB}-fachen ist erfahrungsgemäss nicht der Wasserbedarf die Ursache: In der Historie wurden Schiffe mit so grossem Rückstand nur in 16 % der Fälle bewässert, solche im Takt in 52 %."
+          onclick="Admin.klaerfall('${datum}','${a.id}')" style="cursor:pointer">Klärfall — klären ›</span>`:''}
         ${a.geschaetzt?'<span class="chip a">Fälligkeit geschätzt — keine Historie</span>':''}
         ${a.quelle==='manuell'?'<span class="chip b">manuell</span>':''}
         ${a.verschoben?'<span class="chip">verschoben</span>':''}

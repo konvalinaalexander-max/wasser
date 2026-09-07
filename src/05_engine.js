@@ -632,6 +632,22 @@ const Engine = {
       /* Freigegebene Tage bleiben unangetastet (Handbuch-Invariante 6) –
          nur der Regenbezug wird nachgeführt. */
       if(bestehend && bestehend.freigegeben){
+        /* Ein freigegebener Tag wird nicht neu gerechnet (Invariante 6) — aber
+           ein Auftrag, dessen Sektoren es nicht mehr gibt, lässt sich auch nicht
+           mehr ausführen. Er würde den Wassermann zu einer Kultur schicken, die
+           abgeräumt ist. Solche Aufträge fallen raus; von Hand angelegte bleiben,
+           sie hängen an keinem Sektor. */
+        const lebt=a=>{
+          if(a.quelle!=='auto') return true;
+          if(!(a.sektorIds||[]).length) return true;
+          return a.sektorIds.some(id=>{
+            const k=Store.sektorNach(id);
+            return k && k.kulturId;
+          });
+        };
+        const vorher=bestehend.auftraege.length;
+        bestehend.auftraege=bestehend.auftraege.filter(lebt);
+        bestehend.entfallen=(bestehend.entfallen||0)+(vorher-bestehend.auftraege.length);
         bestehend.auftraege.forEach(a=>{
           const fd=Store.feld(a.feldId);
           const rg=this.regenFuerFeld(fd, a.standortId, d);
@@ -640,6 +656,35 @@ const Engine = {
              die Erklärung, warum an einem Regentag nichts gekürzt wird */
           a.regenStandortMm=this.regenAm(a.standortId, d)||0;
           a.ueberdacht=!!(fd && fd.ueberdacht);
+          /* Anzeigefelder der Bilanz nachführen — NICHT den Plan. Was
+             freigegeben wurde, bleibt in Umfang, Menge und Reihenfolge
+             unangetastet (Invariante 6). Aber „Klärfall" ist eine Aussage über
+             den heutigen Datenstand: wird der fehlende Gang nachgetragen,
+             stimmt sie nicht mehr, und die Marke muss verschwinden. Sonst
+             drückt der Leiter denselben Knopf endlos. */
+          if(a.quelle==='auto' && (a.sektorIds||[]).length){
+            let dr=null, uf=null, letzte=null;
+            (a.schiffIds||[]).forEach(sid=>{
+              const i=Store.db._sch[sid]; if(!i) return;
+              (i.schiff.sektoren||[]).forEach(k=>{
+                if(!a.sektorIds.includes(k.id)) return;
+                const bl=this.bilanz({sektor:k, schiff:i.schiff, feld:i.feld,
+                                      standort:i.standort}, d);
+                if(!bl || !bl.menge) return;
+                const x=bl.defizit/bl.menge;
+                if(dr==null || x>dr) dr=x;
+                const u=Math.round((bl.defizit-bl.menge)/bl.proTag);
+                if(uf==null || u>uf) uf=u;
+                if(bl.letzte && (!letzte || bl.letzte<letzte)) letzte=bl.letzte;
+              });
+            });
+            if(dr!=null){
+              a.dringlichkeit=dr;
+              a.rueckstand=dr>=this.RUECKSTAND_AB;
+              a.ueberfaellig=Math.max(0, uf||0);
+              if(letzte) a.letzteBew=letzte;
+            }
+          }
           if(!a.anpassungManuell){
             if(rg){ const emp=this.regenEmpfehlung(a, rg);
               a.angepasstMm=emp.mm; a.anpassungText=emp.hinweis; }
@@ -801,7 +846,7 @@ const Engine = {
      aus dem Plan fielen (frühere Befunde A1, A9, A10, C13).            */
   probleme(){
     const p={ ohneRegel:[], ohneKultur:[], verwaisteRegeln:[], journalOhneFeld:[],
-              ohneRohr:[], ohneGemeinde:0 };
+              ohneRohr:[], ohneGemeinde:0, ohnePflanzdatum:[], phasenOhneDatum:[] };
     const genutzteRegeln=new Set();
     Store.db.felder.forEach(f=>{
       if(f.bewaessert===false) return;
@@ -812,8 +857,17 @@ const Engine = {
         if(!sk.length){ p.ohneKultur.push({feld:f, schiff:s}); return; }
         sk.forEach(k=>{
           const key=Store.regelKey(f.id,k.kulturId);
-          if(Store.db.regeln[key]) genutzteRegeln.add(key);
+          const regel=Store.db.regeln[key];
+          if(regel) genutzteRegeln.add(key);
           else p.ohneRegel.push({feld:f, schiff:s, sektor:k, kultur:Store.kultur(k.kulturId)});
+          /* Ohne Pflanzdatum kann keine Kulturphase greifen — die Regel hat
+             dann Phasen, die nie zur Anwendung kommen. Das ist die stillste
+             Art, in der eine eingetragene Absicht wirkungslos bleibt. */
+          if(!D.ok(k.pflanzdatum)){
+            const eintrag={feld:f, schiff:s, sektor:k, kultur:Store.kultur(k.kulturId)};
+            p.ohnePflanzdatum.push(eintrag);
+            if(regel && (regel.phasen||[]).length) p.phasenOhneDatum.push(eintrag);
+          }
         });
       });
     });
