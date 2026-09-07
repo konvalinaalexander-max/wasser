@@ -739,6 +739,11 @@ const Store = {
     const d=this.db;
     d.felder.forEach(f=>{
       f.schiffe = Array.isArray(f.schiffe)?f.schiffe:[];
+      /* Überdachte Flächen bekommen keinen Regen. Standard ist Freiland —
+         die Angabe fehlt in den Altdaten und muss erfasst werden, deshalb
+         merkt sich das Feld auch, ob jemand schon hingeschaut hat. */
+      f.ueberdacht = f.ueberdacht===true;
+      f.ueberdachtGeprueft = f.ueberdachtGeprueft===true;
       /* Ein Feld ohne Schiff-Nummerierung (Pflichtenheft §3/§4) bekommt EIN implizites
          Schiff über den ganzen Umriss. Dadurch funktioniert die gesamte übrige Logik
          – Planung, Sektoren, Kultur, Dauer – unverändert auch für schifflose Felder. */
@@ -1244,6 +1249,15 @@ const Engine = {
     Store.db.regen.forEach(r=>{ if(r.datum===datum && (r.standortIds||[]).includes(standortId)) mm+=r.mm; });
     return mm;
   },
+  /* Regen, der beim Bestand ANKOMMT. Unter Folie oder Glas kommt keiner an.
+     Ohne diese Unterscheidung würde die App einen Tunnel wegen Regen
+     überspringen — der einzige Punkt, an dem eine falsche Annahme in dieser
+     Rechnung nicht nur ungenau, sondern schädlich ist.
+     `feld` darf fehlen; dann gilt der Standortwert (Verhalten wie bisher). */
+  regenFuerFeld(feld, standortId, datum){
+    if(feld && feld.ueberdacht) return 0;
+    return this.regenAm(standortId, datum);
+  },
 
   /* ---- Wasserbilanz eines Sektors ------------------------------
      Defizit wächst täglich um (Menge / Intervall) und wird durch
@@ -1280,7 +1294,7 @@ const Engine = {
       defizit += proTag;
       // Regen des Zieldatums selbst nicht verrechnen: er erscheint als
       // Anpassungsvorschlag am Auftrag, damit der Admin entscheidet.
-      const rg = tag<ende ? this.regenAm(standort.id, tag) : 0;
+      const rg = tag<ende ? this.regenFuerFeld(feld, standort.id, tag) : 0;
       if(rg) defizit = Math.max(0, defizit - rg);
     }
     return { regel:phase, menge, intervall:iv, proTag, defizit, letzte, geschaetzt,
@@ -1377,7 +1391,10 @@ const Engine = {
            Vorher stand hier das jüngste, was „1 Tag" neben „+64 Tage überfällig" ergab. */
         const letzte=paket.map(i=>i.b.letzte).filter(Boolean).sort()[0]||null;
         const geschaetzt=paket.some(i=>i.b.geschaetzt);
-        const regen=this.regenAm(first.standort.id, datum);
+        const regen=this.regenFuerFeld(first.feld, first.standort.id, datum);
+        /* Was am Standort gefallen ist, auch wenn es die Fläche nicht erreicht —
+           sonst steht auf der Karte kommentarlos „0 mm Regen" an einem Regentag. */
+        const regenStandort=this.regenAm(first.standort.id, datum);
         const vorschlag=regen? this.regenEmpfehlung({zielMm:menge}, regen) : null;
         const gaenge=paket[0].b.gaenge, zeiten=paket[0].b.zeiten;
         const basisKey=[feldId, first.sektor.kulturId, Math.round(menge)].join('~');
@@ -1393,6 +1410,7 @@ const Engine = {
             standortId:first.standort.id, feldId, kulturId:first.sektor.kulturId,
             schiffIds, sektorIds, nummern,
             zielMm:menge, letzteBew:letzte, regenMm:regen||0,
+            regenStandortMm:regenStandort||0, ueberdacht:!!first.feld.ueberdacht,
             dringlichkeit, rhythmus, rueckstand,
             angepasstMm: vorschlag? vorschlag.mm : null,
             anpassungText: vorschlag? vorschlag.hinweis : null,
@@ -1519,8 +1537,13 @@ const Engine = {
          nur der Regenbezug wird nachgeführt. */
       if(bestehend && bestehend.freigegeben){
         bestehend.auftraege.forEach(a=>{
-          const rg=this.regenAm(a.standortId, d);
+          const fd=Store.feld(a.feldId);
+          const rg=this.regenFuerFeld(fd, a.standortId, d);
           a.regenMm=rg||0;
+          /* auch auf freigegebenen Tagen nachführen, sonst fehlt dem Wassermann
+             die Erklärung, warum an einem Regentag nichts gekürzt wird */
+          a.regenStandortMm=this.regenAm(a.standortId, d)||0;
+          a.ueberdacht=!!(fd && fd.ueberdacht);
           if(!a.anpassungManuell){
             if(rg){ const emp=this.regenEmpfehlung(a, rg);
               a.angepasstMm=emp.mm; a.anpassungText=emp.hinweis; }
@@ -2169,9 +2192,15 @@ const Admin = {
   regenDialog(){
     const ws=Store.db.wetterstationen;
     const ohne=ws.filter(w=>!w.standortIds.length).length;
+    const ungeprueft=Store.db.felder.filter(f=>f.bewaessert!==false && !f.ueberdachtGeprueft).length;
     openModal('Niederschlag erfassen',
       `<p class="muted" style="margin-top:0">Trage ab, was die Wetterstationen gemessen haben.
         Die zugeordneten Standorte bekommen den Wert automatisch.</p>
+       ${ungeprueft?`<div class="warnbox">Bei <b>${ungeprueft} Feldern</b> ist nicht erfasst, ob sie
+         überdacht sind. Sie gelten als Freiland und bekommen den Regen angerechnet — bei einem
+         Tunnel wäre das der einzige Fehler in dieser App, der wirklich schadet.
+         <button class="btn sm" style="margin-left:8px"
+           onclick="closeModal();Admin.ueberdachungDialog()">Jetzt festlegen</button></div>`:''}
        <div class="field"><label>Für welchen Tag?</label>
          <select class="inp" id="rgTag">
            <option value="${D.today()}">Heute — ${esc(D.nice(D.today()))}</option>
@@ -2467,6 +2496,9 @@ const Admin = {
         ${['schwach','mittel'].includes(W.stufe(gang.dauerMin))
           ?`<span class="chip a" title="${esc(W.text(gang.dauerMin, x=>hhmm(x)))}">Dauer ${
             W.stufe(gang.dauerMin)==='schwach'?'unsicher':'mittel sicher'}</span>`:''}
+        ${a.ueberdacht && a.regenStandortMm>0
+          ?`<span class="chip b" title="Am Standort sind ${a.regenStandortMm} mm gefallen, aber diese Fläche ist als überdacht erfasst. Der Regen wird nicht verrechnet und es gibt keinen Kürzungsvorschlag.">überdacht — ${
+            a.regenStandortMm} mm Regen zählen nicht</span>`:''}
         ${a.rueckstand?`<span class="chip a" title="Der Rückstand beträgt das ${
           (a.dringlichkeit||1).toFixed(1)}-fache der Regelmenge. Ab dem ${
           Engine.RUECKSTAND_AB}-fachen ist erfahrungsgemäss nicht der Wasserbedarf die Ursache: In der Historie wurden Schiffe mit so grossem Rückstand nur in 16 % der Fälle bewässert, solche im Takt in 52 %. Prüfen: Kultur noch da? Regel zu eng? Gang nicht eingetragen?">Rückstand — Regel prüfen</span>`:''}
@@ -3020,7 +3052,14 @@ Object.assign(Admin, {
          <div class="tiny dim" style="margin-top:4px">Ohne Zuordnung fliesst weder die Historie in die
            Erfahrungswerte ein, noch findet die App die neuen Einträge des Wassermanns wieder.</div></div>
        <label class="row" style="gap:9px"><input type="checkbox" id="fbUnsicher" ${f.unsicher?'checked':''}
-          style="width:18px;height:18px"><span>Digitalisierung unsicher — im Plan hervorheben</span></label>`,
+          style="width:18px;height:18px"><span>Digitalisierung unsicher — im Plan hervorheben</span></label>
+       <label class="row" style="gap:9px;margin-top:9px"><input type="checkbox" id="fbUeberdacht"
+          ${f.ueberdacht?'checked':''} style="width:18px;height:18px">
+          <span>Überdacht (Tunnel, Folie, Glas)</span></label>
+       <div class="tiny dim" style="margin-top:4px;padding-left:27px">Auf einer überdachten Fläche
+         kommt kein Regen an. Die App verrechnet dort keinen Niederschlag und schlägt nie vor,
+         einen Gang wegen Regen zu kürzen. Ohne diese Angabe gilt die Fläche als Freiland —
+         und ein Tunnel würde nach einem Regentag trockenfallen.</div>`,
       `<button class="btn" onclick="closeModal()">Abbrechen</button>
        <button class="btn pri" onclick="Admin.feldSpeichern('${id}')">Speichern</button>`);
   },
@@ -3030,12 +3069,63 @@ Object.assign(Admin, {
     f.gemeinde=$('#fbGem').value.trim()||null; f.gemeindeFehlt=!f.gemeinde;
     f.gesamtflaecheAren=num($('#fbAren').value);
     f.unsicher=$('#fbUnsicher').checked;
+    f.ueberdacht=$('#fbUeberdacht').checked;
+    f.ueberdachtGeprueft=true;
     const jm=Store.db.einstellungen.journalMap=Store.db.einstellungen.journalMap||{};
     Object.keys(jm).forEach(k=>{ if(jm[k]===f.id) delete jm[k]; });
     const jn=$('#fbJournal').value; if(jn) jm[jn]=f.id;
     closeModal(); Store.changed('journal');
     if(FeldEditor.ctx) FeldEditor.render(); else this.render();
     toast('Gespeichert');
+  },
+
+  /* --- Überdachung für alle Felder auf einmal ---------------------
+     Niemand öffnet 49 Stammdaten-Dialoge. Die Angabe fehlt in den Altdaten
+     vollständig, also braucht sie eine Maske, die man in einem Durchgang
+     abarbeitet — sortiert nach Standort, mit Fläche daneben. */
+  ueberdachungDialog(){
+    const zeilen=Store.db.standorte.map(st=>{
+      const fs=Store.felderVon(st.id).filter(f=>f.bewaessert!==false);
+      if(!fs.length) return '';
+      return `<tr><td colspan="3" style="padding-top:12px"><b class="tiny"
+          style="text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)">${esc(st.name)}</b></td></tr>`
+        + fs.map(f=>`<tr>
+          <td><label class="row" style="gap:9px;cursor:pointer">
+            <input type="checkbox" style="width:17px;height:17px" ${f.ueberdacht?'checked':''}
+              onchange="Admin.ueberdachtSetzen('${f.id}',this.checked)">
+            <span>${esc(f.name)}</span></label></td>
+          <td class="tiny dim">${f.gesamtflaecheAren?f.gesamtflaecheAren+' a':'–'}</td>
+          <td class="tiny ${f.ueberdachtGeprueft?'dim':''}" style="${f.ueberdachtGeprueft?'':'color:var(--amber)'}">${
+            f.ueberdachtGeprueft?'geprüft':'noch nicht angeschaut'}</td></tr>`).join('');
+    }).join('');
+    const offen=Store.db.felder.filter(f=>f.bewaessert!==false && !f.ueberdachtGeprueft).length;
+    openModal('Überdachte Flächen',
+      `<p class="muted" style="margin-top:0">Auf einer überdachten Fläche kommt kein Regen an.
+        Die App verrechnet dort keinen Niederschlag und schlägt nie vor, einen Gang wegen Regen
+        zu kürzen.</p>
+       ${offen?`<div class="warnbox">${offen} Felder sind noch nicht angeschaut. Solange gelten sie
+         als Freiland — bei einem Tunnel wäre das der einzige Fehler in dieser App, der
+         tatsächlich Schaden anrichtet.</div>`:
+         '<div class="okbox">Alle bewässerten Felder sind angeschaut.</div>'}
+       <div class="scrollx" style="max-height:52vh;overflow-y:auto">
+         <table class="tb"><tbody>${zeilen}</tbody></table></div>
+       <div class="row wrap" style="gap:7px;margin-top:11px">
+         <button class="btn sm ghost" onclick="Admin.ueberdachtAlleGeprueft()">Alle übrigen als Freiland bestätigen</button>
+       </div>`,
+      `<button class="btn pri" onclick="closeModal();Admin.render()">Fertig</button>`, true);
+  },
+  ueberdachtSetzen(fid, an){
+    const f=Store.feld(fid); if(!f) return;
+    f.ueberdacht=!!an; f.ueberdachtGeprueft=true;
+    Store.changed('regen');
+  },
+  ueberdachtAlleGeprueft(){
+    frage('Alle übrigen als Freiland bestätigen?',
+      'Damit gelten alle noch nicht angeschauten Felder ausdrücklich als nicht überdacht. '
+      +'Das ist dieselbe Rechnung wie bisher — nur ist danach dokumentiert, dass jemand hingesehen hat.',
+      'Als Freiland bestätigen',
+      ()=>{ Store.db.felder.forEach(f=>{ if(f.bewaessert!==false) f.ueberdachtGeprueft=true; });
+            Store.changed('regen'); this.ueberdachungDialog(); toast('Bestätigt'); });
   },
 
   /* --- Schiffe-Tabelle --- */
@@ -3698,6 +3788,19 @@ Object.assign(Admin, {
         Ein Standort gehört zu höchstens einer Station.</div>
       <div id="wsBox"></div>
       <button class="btn sm" onclick="Admin.wsHinzu()">+ Station</button>
+
+      <div class="sec-title">Überdachte Flächen</div>
+      <div class="tiny dim" style="margin-bottom:9px">Auf Tunnel- und Gewächshausflächen kommt kein
+        Regen an. Ohne diese Angabe rechnet die App überall mit Freiland und würde nach einem
+        Regentag einen Gang unter Folie kürzen oder streichen.</div>
+      ${(()=>{const bw=Store.db.felder.filter(f=>f.bewaessert!==false);
+              const ue=bw.filter(f=>f.ueberdacht).length;
+              const of=bw.filter(f=>!f.ueberdachtGeprueft).length;
+              return `<div class="${of?'warnbox':'okbox'}" style="margin-bottom:9px">
+                ${ue} von ${bw.length} bewässerten Feldern sind als überdacht erfasst.
+                ${of?`<b>${of} sind noch nicht angeschaut</b> und gelten solange als Freiland.`
+                   :'Alle sind angeschaut.'}</div>`;})()}
+      <button class="btn sm" onclick="Admin.ueberdachungDialog()">Überdachung festlegen</button>
 
       <div class="sec-title">Daten</div>
       <div class="row wrap">
@@ -4935,10 +5038,22 @@ Object.assign(Admin, {
 
     const U1=A.ueberblick();
     if(!U1.gaenge){
+      const letzter=Store.db.journal.map(j=>j.datum).filter(Boolean).sort().pop()||null;
       const b=el('div','infobox');
-      b.innerHTML=`Im Zeitraum <b>${esc(sp.label)}</b> steht kein zugeordneter Journaleintrag.
-        ${U1.gaengeGesamt?`${U1.gaengeGesamt} Einträge gibt es, aber keiner zeigt auf ein Feld —
-        das lässt sich unter <b>Journal</b> zuordnen.`:'Wähle einen anderen Zeitraum.'}`;
+      if(U1.gaengeGesamt){
+        b.innerHTML=`Im Zeitraum <b>${esc(sp.label)}</b> liegen ${U1.gaengeGesamt} Einträge,
+          aber keiner zeigt auf ein Feld. Zuordnen unter <b>Journal</b>.`;
+      } else if(letzter){
+        b.innerHTML=`Im Zeitraum <b>${esc(sp.label)}</b> steht kein Journaleintrag.
+          Der letzte ist vom <b>${esc(D.nice(letzter))}</b>, also ${D.diff(letzter, D.today())}
+          Tage her — das gewählte Fenster liegt vollständig danach.
+          <div class="row wrap" style="gap:7px;margin-top:9px">
+            <button class="btn sm pri" onclick="Auswert.zeitraum='saison';Auswert._cache=null;Admin.render()">Ganze Saison ansehen</button>
+            <button class="btn sm ghost" onclick="Auswert.zeitraum='alles';Auswert._cache=null;Admin.render()">Ganzes Journal</button>
+          </div>`;
+      } else {
+        b.innerHTML='Es gibt noch keine Journaleinträge, aus denen sich etwas auswerten liesse.';
+      }
       p.appendChild(b); return;
     }
 

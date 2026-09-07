@@ -40,9 +40,15 @@ const Admin = {
   regenDialog(){
     const ws=Store.db.wetterstationen;
     const ohne=ws.filter(w=>!w.standortIds.length).length;
+    const ungeprueft=Store.db.felder.filter(f=>f.bewaessert!==false && !f.ueberdachtGeprueft).length;
     openModal('Niederschlag erfassen',
       `<p class="muted" style="margin-top:0">Trage ab, was die Wetterstationen gemessen haben.
         Die zugeordneten Standorte bekommen den Wert automatisch.</p>
+       ${ungeprueft?`<div class="warnbox">Bei <b>${ungeprueft} Feldern</b> ist nicht erfasst, ob sie
+         überdacht sind. Sie gelten als Freiland und bekommen den Regen angerechnet — bei einem
+         Tunnel wäre das der einzige Fehler in dieser App, der wirklich schadet.
+         <button class="btn sm" style="margin-left:8px"
+           onclick="closeModal();Admin.ueberdachungDialog()">Jetzt festlegen</button></div>`:''}
        <div class="field"><label>Für welchen Tag?</label>
          <select class="inp" id="rgTag">
            <option value="${D.today()}">Heute — ${esc(D.nice(D.today()))}</option>
@@ -338,6 +344,9 @@ const Admin = {
         ${['schwach','mittel'].includes(W.stufe(gang.dauerMin))
           ?`<span class="chip a" title="${esc(W.text(gang.dauerMin, x=>hhmm(x)))}">Dauer ${
             W.stufe(gang.dauerMin)==='schwach'?'unsicher':'mittel sicher'}</span>`:''}
+        ${a.ueberdacht && a.regenStandortMm>0
+          ?`<span class="chip b" title="Am Standort sind ${a.regenStandortMm} mm gefallen, aber diese Fläche ist als überdacht erfasst. Der Regen wird nicht verrechnet und es gibt keinen Kürzungsvorschlag.">überdacht — ${
+            a.regenStandortMm} mm Regen zählen nicht</span>`:''}
         ${a.rueckstand?`<span class="chip a" title="Der Rückstand beträgt das ${
           (a.dringlichkeit||1).toFixed(1)}-fache der Regelmenge. Ab dem ${
           Engine.RUECKSTAND_AB}-fachen ist erfahrungsgemäss nicht der Wasserbedarf die Ursache: In der Historie wurden Schiffe mit so grossem Rückstand nur in 16 % der Fälle bewässert, solche im Takt in 52 %. Prüfen: Kultur noch da? Regel zu eng? Gang nicht eingetragen?">Rückstand — Regel prüfen</span>`:''}

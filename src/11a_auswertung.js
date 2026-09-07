@@ -428,10 +428,22 @@ Object.assign(Admin, {
 
     const U1=A.ueberblick();
     if(!U1.gaenge){
+      const letzter=Store.db.journal.map(j=>j.datum).filter(Boolean).sort().pop()||null;
       const b=el('div','infobox');
-      b.innerHTML=`Im Zeitraum <b>${esc(sp.label)}</b> steht kein zugeordneter Journaleintrag.
-        ${U1.gaengeGesamt?`${U1.gaengeGesamt} Einträge gibt es, aber keiner zeigt auf ein Feld —
-        das lässt sich unter <b>Journal</b> zuordnen.`:'Wähle einen anderen Zeitraum.'}`;
+      if(U1.gaengeGesamt){
+        b.innerHTML=`Im Zeitraum <b>${esc(sp.label)}</b> liegen ${U1.gaengeGesamt} Einträge,
+          aber keiner zeigt auf ein Feld. Zuordnen unter <b>Journal</b>.`;
+      } else if(letzter){
+        b.innerHTML=`Im Zeitraum <b>${esc(sp.label)}</b> steht kein Journaleintrag.
+          Der letzte ist vom <b>${esc(D.nice(letzter))}</b>, also ${D.diff(letzter, D.today())}
+          Tage her — das gewählte Fenster liegt vollständig danach.
+          <div class="row wrap" style="gap:7px;margin-top:9px">
+            <button class="btn sm pri" onclick="Auswert.zeitraum='saison';Auswert._cache=null;Admin.render()">Ganze Saison ansehen</button>
+            <button class="btn sm ghost" onclick="Auswert.zeitraum='alles';Auswert._cache=null;Admin.render()">Ganzes Journal</button>
+          </div>`;
+      } else {
+        b.innerHTML='Es gibt noch keine Journaleinträge, aus denen sich etwas auswerten liesse.';
+      }
       p.appendChild(b); return;
     }
 

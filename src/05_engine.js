@@ -345,6 +345,15 @@ const Engine = {
     Store.db.regen.forEach(r=>{ if(r.datum===datum && (r.standortIds||[]).includes(standortId)) mm+=r.mm; });
     return mm;
   },
+  /* Regen, der beim Bestand ANKOMMT. Unter Folie oder Glas kommt keiner an.
+     Ohne diese Unterscheidung würde die App einen Tunnel wegen Regen
+     überspringen — der einzige Punkt, an dem eine falsche Annahme in dieser
+     Rechnung nicht nur ungenau, sondern schädlich ist.
+     `feld` darf fehlen; dann gilt der Standortwert (Verhalten wie bisher). */
+  regenFuerFeld(feld, standortId, datum){
+    if(feld && feld.ueberdacht) return 0;
+    return this.regenAm(standortId, datum);
+  },
 
   /* ---- Wasserbilanz eines Sektors ------------------------------
      Defizit wächst täglich um (Menge / Intervall) und wird durch
@@ -381,7 +390,7 @@ const Engine = {
       defizit += proTag;
       // Regen des Zieldatums selbst nicht verrechnen: er erscheint als
       // Anpassungsvorschlag am Auftrag, damit der Admin entscheidet.
-      const rg = tag<ende ? this.regenAm(standort.id, tag) : 0;
+      const rg = tag<ende ? this.regenFuerFeld(feld, standort.id, tag) : 0;
       if(rg) defizit = Math.max(0, defizit - rg);
     }
     return { regel:phase, menge, intervall:iv, proTag, defizit, letzte, geschaetzt,
@@ -478,7 +487,10 @@ const Engine = {
            Vorher stand hier das jüngste, was „1 Tag" neben „+64 Tage überfällig" ergab. */
         const letzte=paket.map(i=>i.b.letzte).filter(Boolean).sort()[0]||null;
         const geschaetzt=paket.some(i=>i.b.geschaetzt);
-        const regen=this.regenAm(first.standort.id, datum);
+        const regen=this.regenFuerFeld(first.feld, first.standort.id, datum);
+        /* Was am Standort gefallen ist, auch wenn es die Fläche nicht erreicht —
+           sonst steht auf der Karte kommentarlos „0 mm Regen" an einem Regentag. */
+        const regenStandort=this.regenAm(first.standort.id, datum);
         const vorschlag=regen? this.regenEmpfehlung({zielMm:menge}, regen) : null;
         const gaenge=paket[0].b.gaenge, zeiten=paket[0].b.zeiten;
         const basisKey=[feldId, first.sektor.kulturId, Math.round(menge)].join('~');
@@ -494,6 +506,7 @@ const Engine = {
             standortId:first.standort.id, feldId, kulturId:first.sektor.kulturId,
             schiffIds, sektorIds, nummern,
             zielMm:menge, letzteBew:letzte, regenMm:regen||0,
+            regenStandortMm:regenStandort||0, ueberdacht:!!first.feld.ueberdacht,
             dringlichkeit, rhythmus, rueckstand,
             angepasstMm: vorschlag? vorschlag.mm : null,
             anpassungText: vorschlag? vorschlag.hinweis : null,
@@ -620,8 +633,13 @@ const Engine = {
          nur der Regenbezug wird nachgeführt. */
       if(bestehend && bestehend.freigegeben){
         bestehend.auftraege.forEach(a=>{
-          const rg=this.regenAm(a.standortId, d);
+          const fd=Store.feld(a.feldId);
+          const rg=this.regenFuerFeld(fd, a.standortId, d);
           a.regenMm=rg||0;
+          /* auch auf freigegebenen Tagen nachführen, sonst fehlt dem Wassermann
+             die Erklärung, warum an einem Regentag nichts gekürzt wird */
+          a.regenStandortMm=this.regenAm(a.standortId, d)||0;
+          a.ueberdacht=!!(fd && fd.ueberdacht);
           if(!a.anpassungManuell){
             if(rg){ const emp=this.regenEmpfehlung(a, rg);
               a.angepasstMm=emp.mm; a.anpassungText=emp.hinweis; }

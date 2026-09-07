@@ -229,9 +229,14 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
     o.fraglich=dk.filter(x=>x>Engine.DECKUNG_MAX).length;
     o.anteilFraglich=+(o.fraglich/dk.length).toFixed(3);
 
-    /* Zeitraumwechsel darf die Zahlen ändern, aber nicht zerstören */
+    /* Zeitraumwechsel darf die Zahlen ändern, aber nicht zerstören. Bewusst
+       KEINE Annahme, dass ein Fenster gefüllt ist — das Journal endet am
+       04.08.2026, und je nach heutigem Datum ist „letzte 30 Tage" leer. Genau
+       dieser Fall muss eine brauchbare Ansicht ergeben statt einer leeren Seite. */
     Auswert.zeitraum='tage30'; Auswert._cache=null; Admin.render();
     o.tage30=Auswert.ueberblick().gaenge;
+    o.leerZustandBrauchbar = o.tage30>0
+      || !!document.querySelector('#admPage .infobox button');
     Auswert.zeitraum='alles'; Auswert._cache=null; Admin.render();
     o.alles=Auswert.ueberblick().gaenge;
     Auswert.zeitraum='saison'; Auswert._cache=null; Admin.render();
@@ -245,8 +250,60 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
   t('Deckungsschwelle liegt jenseits des 95. Prozentwerts',
     AW.schwelleUeberP95 && AW.anteilFraglich<0.08, {p95:AW.p95, anteil:AW.anteilFraglich});
   t('Zeiträume liefern eine sinnvolle Staffelung',
-    AW.tage30>0 && AW.tage30<=AW.gaenge && AW.alles>=AW.gaenge,
-    {t30:AW.tage30, saison:AW.gaenge, alles:AW.alles});
+    AW.tage30<=AW.gaenge && AW.alles>=AW.gaenge && AW.leerZustandBrauchbar,
+    {t30:AW.tage30, saison:AW.gaenge, alles:AW.alles, leerOk:AW.leerZustandBrauchbar});
+
+  /* ---- Überdachte Flächen bekommen keinen Regen ---- */
+  const UE=await pg.evaluate(()=>{
+    const o={}, heute=D.today();
+    const a0=(Store.db.plan[heute]||{auftraege:[]}).auftraege.find(a=>a.quelle==='auto');
+    if(!a0) return {kein:true};
+    const feld=Store.feld(a0.feldId), st=feld.standortId;
+    const info=Store.db._sch[a0.schiffIds[0]];
+    const sek=info && info.schiff.sektoren.find(x=>x.kulturId);
+    if(!sek) return {kein:true};
+
+    /* kräftiger Regen an diesem Standort über zwei Wochen zurück */
+    for(let i=0;i<14;i++) Store.db.regen.push({id:uid('rg'), datum:D.add(heute,-i), mm:20,
+      standortIds:[st], stationId:null});
+    /* und eine lange Trockenphase davor, damit die Bilanz überhaupt Tage im
+       Regenfenster durchläuft */
+    sek.letzteBewaesserung = D.add(heute,-20);
+
+    const eintrag={sektor:sek, schiff:info.schiff, feld, standort:Store.standort(st)};
+    const bis=D.add(heute,1);
+
+    feld.ueberdacht=false; Store.changed('regen');
+    o.regenFreiland = Engine.regenFuerFeld(feld, st, heute);
+    const frei=Engine.bilanz(eintrag, bis);
+
+    feld.ueberdacht=true; Store.changed('regen');
+    o.regenUeberdacht = Engine.regenFuerFeld(feld, st, heute);
+    const dach=Engine.bilanz(eintrag, bis);
+
+    o.defizitFreiland   = frei? +frei.defizit.toFixed(2) : null;
+    o.defizitUeberdacht = dach? +dach.defizit.toFixed(2) : null;
+    o.regenGreift = o.regenFreiland>0 && o.regenUeberdacht===0
+                    && o.defizitUeberdacht > o.defizitFreiland;
+
+    /* Aufträge dieses Feldes im Horizont: unter Dach kein Regen, kein Vorschlag,
+       aber der Standortregen bleibt sichtbar */
+    Engine.planNeu();
+    const meine=Object.entries(Store.db.plan)
+      .flatMap(([d,pp])=>pp.auftraege.filter(x=>x.feldId===feld.id && x.quelle==='auto')
+        .map(x=>({d, regenMm:x.regenMm, standort:x.regenStandortMm, anp:x.angepasstMm})))
+      .filter(x=>Store.db.regen.some(r=>r.datum===x.d && r.standortIds.includes(st)));
+    o.nAuftraege=meine.length;
+    o.keinVorschlagUnterDach = meine.every(x=>x.regenMm===0 && x.anp==null);
+    o.zeigtStandortregen     = meine.every(x=>x.standort>0);
+
+    feld.ueberdacht=false; Store.db.regen=[]; sek.letzteBewaesserung=null;
+    Store.changed('regen');
+    return o;
+  });
+  t('überdachte Flächen bekommen keinen Regen angerechnet',
+    UE.kein || (UE.regenGreift && UE.keinVorschlagUnterDach
+                && (UE.nAuftraege===0 || UE.zeigtStandortregen)), UE);
 
   /* ---- Rückstands-Stufung: die Reihung darf sich nicht still umdrehen ---- */
   const rk=await pg.evaluate(()=>{

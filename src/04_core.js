@@ -388,6 +388,11 @@ const Store = {
     const d=this.db;
     d.felder.forEach(f=>{
       f.schiffe = Array.isArray(f.schiffe)?f.schiffe:[];
+      /* Überdachte Flächen bekommen keinen Regen. Standard ist Freiland —
+         die Angabe fehlt in den Altdaten und muss erfasst werden, deshalb
+         merkt sich das Feld auch, ob jemand schon hingeschaut hat. */
+      f.ueberdacht = f.ueberdacht===true;
+      f.ueberdachtGeprueft = f.ueberdachtGeprueft===true;
       /* Ein Feld ohne Schiff-Nummerierung (Pflichtenheft §3/§4) bekommt EIN implizites
          Schiff über den ganzen Umriss. Dadurch funktioniert die gesamte übrige Logik
          – Planung, Sektoren, Kultur, Dauer – unverändert auch für schifflose Felder. */

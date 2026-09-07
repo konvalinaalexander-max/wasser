@@ -99,7 +99,14 @@ Object.assign(Admin, {
          <div class="tiny dim" style="margin-top:4px">Ohne Zuordnung fliesst weder die Historie in die
            Erfahrungswerte ein, noch findet die App die neuen Einträge des Wassermanns wieder.</div></div>
        <label class="row" style="gap:9px"><input type="checkbox" id="fbUnsicher" ${f.unsicher?'checked':''}
-          style="width:18px;height:18px"><span>Digitalisierung unsicher — im Plan hervorheben</span></label>`,
+          style="width:18px;height:18px"><span>Digitalisierung unsicher — im Plan hervorheben</span></label>
+       <label class="row" style="gap:9px;margin-top:9px"><input type="checkbox" id="fbUeberdacht"
+          ${f.ueberdacht?'checked':''} style="width:18px;height:18px">
+          <span>Überdacht (Tunnel, Folie, Glas)</span></label>
+       <div class="tiny dim" style="margin-top:4px;padding-left:27px">Auf einer überdachten Fläche
+         kommt kein Regen an. Die App verrechnet dort keinen Niederschlag und schlägt nie vor,
+         einen Gang wegen Regen zu kürzen. Ohne diese Angabe gilt die Fläche als Freiland —
+         und ein Tunnel würde nach einem Regentag trockenfallen.</div>`,
       `<button class="btn" onclick="closeModal()">Abbrechen</button>
        <button class="btn pri" onclick="Admin.feldSpeichern('${id}')">Speichern</button>`);
   },
@@ -109,12 +116,63 @@ Object.assign(Admin, {
     f.gemeinde=$('#fbGem').value.trim()||null; f.gemeindeFehlt=!f.gemeinde;
     f.gesamtflaecheAren=num($('#fbAren').value);
     f.unsicher=$('#fbUnsicher').checked;
+    f.ueberdacht=$('#fbUeberdacht').checked;
+    f.ueberdachtGeprueft=true;
     const jm=Store.db.einstellungen.journalMap=Store.db.einstellungen.journalMap||{};
     Object.keys(jm).forEach(k=>{ if(jm[k]===f.id) delete jm[k]; });
     const jn=$('#fbJournal').value; if(jn) jm[jn]=f.id;
     closeModal(); Store.changed('journal');
     if(FeldEditor.ctx) FeldEditor.render(); else this.render();
     toast('Gespeichert');
+  },
+
+  /* --- Überdachung für alle Felder auf einmal ---------------------
+     Niemand öffnet 49 Stammdaten-Dialoge. Die Angabe fehlt in den Altdaten
+     vollständig, also braucht sie eine Maske, die man in einem Durchgang
+     abarbeitet — sortiert nach Standort, mit Fläche daneben. */
+  ueberdachungDialog(){
+    const zeilen=Store.db.standorte.map(st=>{
+      const fs=Store.felderVon(st.id).filter(f=>f.bewaessert!==false);
+      if(!fs.length) return '';
+      return `<tr><td colspan="3" style="padding-top:12px"><b class="tiny"
+          style="text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)">${esc(st.name)}</b></td></tr>`
+        + fs.map(f=>`<tr>
+          <td><label class="row" style="gap:9px;cursor:pointer">
+            <input type="checkbox" style="width:17px;height:17px" ${f.ueberdacht?'checked':''}
+              onchange="Admin.ueberdachtSetzen('${f.id}',this.checked)">
+            <span>${esc(f.name)}</span></label></td>
+          <td class="tiny dim">${f.gesamtflaecheAren?f.gesamtflaecheAren+' a':'–'}</td>
+          <td class="tiny ${f.ueberdachtGeprueft?'dim':''}" style="${f.ueberdachtGeprueft?'':'color:var(--amber)'}">${
+            f.ueberdachtGeprueft?'geprüft':'noch nicht angeschaut'}</td></tr>`).join('');
+    }).join('');
+    const offen=Store.db.felder.filter(f=>f.bewaessert!==false && !f.ueberdachtGeprueft).length;
+    openModal('Überdachte Flächen',
+      `<p class="muted" style="margin-top:0">Auf einer überdachten Fläche kommt kein Regen an.
+        Die App verrechnet dort keinen Niederschlag und schlägt nie vor, einen Gang wegen Regen
+        zu kürzen.</p>
+       ${offen?`<div class="warnbox">${offen} Felder sind noch nicht angeschaut. Solange gelten sie
+         als Freiland — bei einem Tunnel wäre das der einzige Fehler in dieser App, der
+         tatsächlich Schaden anrichtet.</div>`:
+         '<div class="okbox">Alle bewässerten Felder sind angeschaut.</div>'}
+       <div class="scrollx" style="max-height:52vh;overflow-y:auto">
+         <table class="tb"><tbody>${zeilen}</tbody></table></div>
+       <div class="row wrap" style="gap:7px;margin-top:11px">
+         <button class="btn sm ghost" onclick="Admin.ueberdachtAlleGeprueft()">Alle übrigen als Freiland bestätigen</button>
+       </div>`,
+      `<button class="btn pri" onclick="closeModal();Admin.render()">Fertig</button>`, true);
+  },
+  ueberdachtSetzen(fid, an){
+    const f=Store.feld(fid); if(!f) return;
+    f.ueberdacht=!!an; f.ueberdachtGeprueft=true;
+    Store.changed('regen');
+  },
+  ueberdachtAlleGeprueft(){
+    frage('Alle übrigen als Freiland bestätigen?',
+      'Damit gelten alle noch nicht angeschauten Felder ausdrücklich als nicht überdacht. '
+      +'Das ist dieselbe Rechnung wie bisher — nur ist danach dokumentiert, dass jemand hingesehen hat.',
+      'Als Freiland bestätigen',
+      ()=>{ Store.db.felder.forEach(f=>{ if(f.bewaessert!==false) f.ueberdachtGeprueft=true; });
+            Store.changed('regen'); this.ueberdachungDialog(); toast('Bestätigt'); });
   },
 
   /* --- Schiffe-Tabelle --- */
@@ -777,6 +835,19 @@ Object.assign(Admin, {
         Ein Standort gehört zu höchstens einer Station.</div>
       <div id="wsBox"></div>
       <button class="btn sm" onclick="Admin.wsHinzu()">+ Station</button>
+
+      <div class="sec-title">Überdachte Flächen</div>
+      <div class="tiny dim" style="margin-bottom:9px">Auf Tunnel- und Gewächshausflächen kommt kein
+        Regen an. Ohne diese Angabe rechnet die App überall mit Freiland und würde nach einem
+        Regentag einen Gang unter Folie kürzen oder streichen.</div>
+      ${(()=>{const bw=Store.db.felder.filter(f=>f.bewaessert!==false);
+              const ue=bw.filter(f=>f.ueberdacht).length;
+              const of=bw.filter(f=>!f.ueberdachtGeprueft).length;
+              return `<div class="${of?'warnbox':'okbox'}" style="margin-bottom:9px">
+                ${ue} von ${bw.length} bewässerten Feldern sind als überdacht erfasst.
+                ${of?`<b>${of} sind noch nicht angeschaut</b> und gelten solange als Freiland.`
+                   :'Alle sind angeschaut.'}</div>`;})()}
+      <button class="btn sm" onclick="Admin.ueberdachungDialog()">Überdachung festlegen</button>
 
       <div class="sec-title">Daten</div>
       <div class="row wrap">
