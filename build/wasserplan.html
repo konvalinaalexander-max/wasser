@@ -3128,39 +3128,169 @@ Object.assign(Admin, {
             Store.changed('regen'); this.ueberdachungDialog(); toast('Bestätigt'); });
   },
 
-  /* --- Schiffe-Tabelle --- */
+  /* --- Schiffe-Tabelle ---
+     Hier werden die Flächen erfasst. Von 164 Schiffen hatten 5 eine eigene
+     Angabe; alles übrige wird aus der Feldfläche über die Zeichnung verteilt,
+     und daran hängt jede mm- und m³/Are-Zahl der App. Die Tabelle zeigt
+     deshalb die Herkunft je Schiff und rechnet laufend gegen die Feldfläche. */
   schiffeVerwalten(id){
     const f=Store.feld(id);
+    const echte=Store.echteSchiffe(f);
+    const eigenM2=s=>s.aren? s.aren*100 : (s.laengeM&&s.breiteM ? s.laengeM*s.breiteM : null);
+    const summeEigen=f.schiffe.reduce((a,s)=>a+(eigenM2(s)||0),0);
+    const feldM2=f.gesamtflaecheAren? f.gesamtflaecheAren*100 : null;
+    const nEigen=f.schiffe.filter(s=>eigenM2(s)!=null).length;
+
     const rows=f.schiffe.map(s=>{
+      const eig=eigenM2(s);
       const a=Store.schiffFlaecheM2(s,f);
-      const spr=Engine.refWerte().schiff[s.id];
+      const herkunft = s.aren ? ['eingetragen','ok']
+                     : (s.laengeM&&s.breiteM) ? ['Länge × Breite','ok']
+                     : a ? ['aus Feldfläche','warn'] : ['keine Fläche','fehlt'];
+      const q=Engine.qFuerSchiffe([s.id]); const qv=W.wert(q);
       return `<tr>
         <td><input class="inp" style="width:74px;padding:5px 7px" value="${esc(s.nummer)}"
              ${s.implizit?'disabled placeholder="ganzes Feld"':''}
              onchange="Admin.schiffFeld('${id}','${s.id}','nummer',this.value)"></td>
         <td><input class="inp" style="width:78px;padding:5px 7px" type="number" value="${s.aren??''}"
              onchange="Admin.schiffFeld('${id}','${s.id}','aren',this.value)"></td>
-        <td><input class="inp" style="width:78px;padding:5px 7px" type="number" value="${s.laengeM??''}"
+        <td><input class="inp" style="width:72px;padding:5px 7px" type="number" value="${s.laengeM??''}"
              onchange="Admin.schiffFeld('${id}','${s.id}','laengeM',this.value)"></td>
-        <td><input class="inp" style="width:78px;padding:5px 7px" type="number" value="${s.breiteM??''}"
+        <td><input class="inp" style="width:72px;padding:5px 7px" type="number" value="${s.breiteM??''}"
              onchange="Admin.schiffFeld('${id}','${s.id}','breiteM',this.value)"></td>
-        <td class="tiny dim">${a?Math.round(a/100)+' a':'–'}</td>
+        <td class="tiny">${a?Math.round(a/100)+' a':'–'}</td>
+        <td class="tiny" style="color:${herkunft[1]==='ok'?'var(--green-2)'
+            :herkunft[1]==='warn'?'var(--amber)':'var(--rust)'}">${herkunft[0]}</td>
         <td class="tiny dim">${(s.sektoren||[]).length}/${(s.rohre||[]).length}</td>
-        <td class="tiny dim">${spr&&spr.mmH?spr.mmH.toFixed(1)+' mm/h':'–'}</td>
+        <td class="tiny dim" title="${esc(W.text(q, x=>x.toFixed(2)+' m³/h'))}">${
+          qv?qv.toFixed(2)+' '+W.zeichen(q):'–'}</td>
         <td>${s.implizit?'':`<button class="btn sm ghost" onclick="Admin.schiffLoeschen('${id}','${s.id}')">✕</button>`}</td></tr>`;
     }).join('');
+
+    /* Kontrollzeile: was eingetragen ist, gegen das, was das Feld hergibt */
+    let kontrolle='';
+    if(feldM2){
+      const rest=feldM2-summeEigen;
+      const ohne=f.schiffe.length-nEigen;
+      if(summeEigen>feldM2*1.02){
+        kontrolle=`<div class="warnbox" style="margin-top:10px">Die eingetragenen Flächen ergeben
+          <b>${Math.round(summeEigen/100)} Aren</b>, das Feld hat aber nur
+          <b>${f.gesamtflaecheAren} Aren</b>. Entweder ist eine Schiffzahl zu gross oder die
+          Feldfläche zu klein. Schiffe ohne eigene Zahl bekommen dann gar nichts mehr.</div>`;
+      } else if(ohne===0){
+        kontrolle=`<div class="okbox" style="margin-top:10px">Alle ${f.schiffe.length} Schiffe haben
+          eine eigene Fläche, zusammen ${Math.round(summeEigen/100)} von ${f.gesamtflaecheAren} Aren.
+          ${rest>feldM2*0.05?`${Math.round(rest/100)} Aren des Feldes sind keinem Schiff zugeordnet —
+            Wege, Ränder oder eine zu grosse Feldangabe.`:''}</div>`;
+      } else {
+        kontrolle=`<div class="infobox" style="margin-top:10px">${nEigen} von ${f.schiffe.length}
+          Schiffen haben eine eigene Fläche (${Math.round(summeEigen/100)} a). Die restlichen
+          <b>${Math.round(rest/100)} Aren</b> werden über die Zeichnung auf ${ohne} Schiffe verteilt.
+          <span class="tiny dim">Solange das so ist, stimmt die Summe des Feldes, aber die mm-Zahl
+          eines einzelnen Schiffs ist nur so genau wie sein Polygon.</span></div>`;
+      }
+    } else {
+      kontrolle=`<div class="warnbox" style="margin-top:10px">Für dieses Feld ist keine Gesamtfläche
+        hinterlegt. Schiffe ohne eigene Zahl bekommen dadurch <b>gar keine Fläche</b> — für sie
+        lässt sich weder mm noch Dauer rechnen. Gesamtfläche in den Stammdaten nachtragen oder
+        je Schiff eine Zahl eintragen.</div>`;
+    }
+
     openModal('Schiffe · '+f.name,
       `<div class="tiny muted" style="margin-bottom:10px">Reihenfolge der Flächenquellen:
         eingetragene <b>Aren</b> → <b>Länge × Breite</b> → Anteil an der Feldfläche.
-        Spalte „S/R" = Sektoren/Rohre, „mm/h" = Erfahrungswert aus dem Journal.</div>
+        Spalte „S/R" = Sektoren/Rohre, „m³/h" = Durchfluss je Sprenkler aus dem Journal
+        mit seiner Verlässlichkeit.</div>
        <div class="scrollx"><table class="tb"><thead><tr><th>Nr.</th><th>Aren</th><th>Länge m</th><th>Breite m</th>
-         <th>Fläche</th><th>S/R</th><th>mm/h</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+         <th>Fläche</th><th>Herkunft</th><th>S/R</th><th>m³/h</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+       ${kontrolle}
        <div class="row wrap" style="margin-top:12px;gap:7px">
          <button class="btn sm" onclick="Admin.schiffHinzu('${id}')">+ Schiff</button>
          <button class="btn sm ghost" onclick="Admin.schiffeAufteilen('${id}')">In n gleiche Streifen teilen…</button>
+         ${feldM2&&nEigen<f.schiffe.length?`<button class="btn sm ghost"
+           onclick="Admin.flaecheGleichVerteilen('${id}')">Restfläche gleichmässig eintragen</button>`:''}
        </div>`,
+      this._flaecheZurueck
+        ? `<button class="btn" onclick="Admin._flaecheZurueck=false;Admin.flaechenLuecken()">‹ Übersicht</button>
+           <div class="sp"></div>
+           <button class="btn pri" onclick="closeModal();Admin.render()">Fertig</button>`
+        : `<button class="btn pri" onclick="closeModal();Admin.render()">Fertig</button>`, true);
+  },
+
+  /* Schreibt die heute nur gerechnete Verteilung als echte Zahlen fest. Damit
+     wird aus einer Annahme eine Angabe, die der Mensch danach einzeln
+     korrigieren kann — besser als eine Annahme, die unsichtbar bleibt. */
+  flaecheGleichVerteilen(id){
+    const f=Store.feld(id);
+    const offen=f.schiffe.filter(s=>!s.aren && !(s.laengeM&&s.breiteM));
+    if(!offen.length || !f.gesamtflaecheAren) return;
+    frage('Restfläche eintragen?',
+      `Die ${offen.length} Schiffe ohne eigene Zahl bekommen die Fläche eingetragen, die die App
+       heute schon für sie rechnet — verteilt nach ihren gezeichneten Polygonen.
+       <br><br>Damit steht die Zahl als <b>eingetragen</b> da statt als Annahme, und du kannst sie
+       einzeln korrigieren. An der Rechnung selbst ändert sich in diesem Moment nichts.
+       <br><br><span class="tiny dim">Anschliessend verändert ein Nachziehen der Polygone die
+       Flächen nicht mehr — sie sind dann festgeschrieben.</span>`,
+      'Eintragen',
+      ()=>{
+        offen.forEach(s=>{ const m2=Store.schiffFlaecheM2(s,f);
+          if(m2) s.aren=Math.round(m2/100*10)/10; });
+        Store.changed('geometrie'); this.schiffeVerwalten(id); toast('Eingetragen');
+      });
+  },
+
+  /* --- Wo fehlen die Flächen? ---------------------------------------
+     Übersicht über alle Felder, sortiert nach Wirkung: das Feld mit der
+     grössten abgeleiteten Fläche steht oben, weil dort am meisten von einer
+     Annahme abhängt. Von hier aus geht es direkt in die Schiffe-Tabelle. */
+  flaechenLuecken(){
+    const eigenM2=s=>s.aren? s.aren*100 : (s.laengeM&&s.breiteM ? s.laengeM*s.breiteM : null);
+    const zeilen=Store.db.felder.filter(f=>f.bewaessert!==false).map(f=>{
+      const sch=f.schiffe;
+      const mitEigen=sch.filter(s=>eigenM2(s)!=null).length;
+      let abgeleitetM2=0, ohneM2=0;
+      sch.forEach(s=>{
+        if(eigenM2(s)!=null) return;
+        const m2=Store.schiffFlaecheM2(s,f);
+        if(m2) abgeleitetM2+=m2; else ohneM2++;
+      });
+      return {f, n:sch.length, mitEigen, abgeleitetM2, ohne:ohneM2,
+              standort:Store.standort(f.standortId)};
+    }).filter(z=>z.mitEigen<z.n)
+      .sort((a,b)=>(b.abgeleitetM2+b.ohne*1e6)-(a.abgeleitetM2+a.ohne*1e6));
+
+    const gesamtAbgeleitet=zeilen.reduce((a,z)=>a+z.abgeleitetM2,0);
+    const gesamtOhne=zeilen.reduce((a,z)=>a+z.ohne,0);
+
+    openModal('Flächen nachtragen',
+      `<p class="muted" style="margin-top:0">Jede mm-Zahl und jedes m³ je Are teilt durch eine
+        Fläche. Wo sie nicht eingetragen ist, verteilt die App die Feldfläche über die
+        gezeichneten Schiffe — im Betriebsschnitt richtig, für ein einzelnes Schiff nur so
+        genau wie die Zeichnung.</p>
+       <div class="${gesamtOhne?'warnbox':'infobox'}">Auf ${zeilen.length} Feldern sind
+         <b>${Math.round(gesamtAbgeleitet/100)} Aren</b> abgeleitet statt eingetragen${
+         gesamtOhne?`, und <b>${gesamtOhne} Schiffe</b> haben gar keine Fläche — für sie lässt
+         sich weder mm noch Dauer rechnen`:''}.</div>
+       <div class="scrollx" style="max-height:50vh;overflow-y:auto;margin-top:10px">
+         <table class="tb"><thead><tr><th>Feld</th><th>Standort</th><th>eigene Fläche</th>
+           <th>abgeleitet</th><th>ohne Fläche</th><th></th></tr></thead><tbody>${
+         zeilen.map(z=>`<tr>
+           <td><b>${esc(z.f.name)}</b>${z.f.gesamtflaecheAren?'':
+             ' <span class="chip r tiny">keine Feldfläche</span>'}</td>
+           <td class="tiny dim">${esc(z.standort?z.standort.name:'–')}</td>
+           <td class="tiny">${z.mitEigen} / ${z.n}</td>
+           <td class="tiny">${z.abgeleitetM2?Math.round(z.abgeleitetM2/100)+' a':'–'}</td>
+           <td class="tiny" style="${z.ohne?'color:var(--rust);font-weight:650':'opacity:.5'}">${z.ohne||'–'}</td>
+           <td><button class="btn sm ghost" onclick="Admin.flaecheZuFeld('${z.f.id}')">eintragen</button></td>
+           </tr>`).join('')}</tbody></table></div>`,
       `<button class="btn pri" onclick="closeModal();Admin.render()">Fertig</button>`, true);
   },
+  /* aus der Übersicht in die Schiffe-Tabelle und wieder zurück */
+  flaecheZuFeld(fid){
+    this._flaecheZurueck=true;
+    this.schiffeVerwalten(fid);
+  },
+
   schiffFeld(fid,sid,feldName,wert){
     const f=Store.feld(fid); const s=f.schiffe.find(x=>x.id===sid); if(!s) return;
     if(feldName==='nummer'){
@@ -5098,7 +5228,9 @@ Object.assign(Admin, {
         gezeichneten Schiffe verteilt${FH.keine?`, ${FH.keine} Schiffe haben gar keine Fläche`:''}.
         <span class="tiny dim">Damit stimmen die Summen im Betriebsschnitt, aber jede mm- und
         m³/Are-Zahl für ein einzelnes Schiff ist nur so genau wie die Zeichnung seines Feldes.
-        Eingetragene Aren je Schiff wären die wirksamste einzelne Verbesserung an diesen Daten.</span>`;
+        Eingetragene Aren je Schiff wären die wirksamste einzelne Verbesserung an diesen Daten.</span>
+        <div style="margin-top:9px"><button class="btn sm"
+          onclick="Admin.flaechenLuecken()">Flächen nachtragen</button></div>`;
       g1.appendChild(w);
     }
     p.appendChild(g1);

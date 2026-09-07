@@ -253,6 +253,47 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
     AW.tage30<=AW.gaenge && AW.alles>=AW.gaenge && AW.leerZustandBrauchbar,
     {t30:AW.tage30, saison:AW.gaenge, alles:AW.alles, leerOk:AW.leerZustandBrauchbar});
 
+  /* ---- Flächen eintragen ---- */
+  const FL=await pg.evaluate(()=>{
+    const o={};
+    Admin.flaechenLuecken();
+    o.uebersichtZeilen=document.querySelectorAll('.modal tbody tr').length;
+    closeModal();
+
+    const f=Store.db.felder.find(x=>x.gesamtflaecheAren
+      && Store.echteSchiffe(x).length>=3
+      && x.schiffe.every(s=>!s.aren && !(s.laengeM&&s.breiteM)));
+    if(!f) return {kein:true};
+
+    /* Vorher: alle Flächen abgeleitet */
+    const vorher=f.schiffe.map(s=>Math.round(Store.schiffFlaecheM2(s,f)));
+    o.herkunftVorher=W.wert(Engine.flaecheFuer([f.schiffe[0].id]))!=null
+      ? Engine.flaecheFuer([f.schiffe[0].id]).quelle : null;
+
+    /* Festschreiben darf die Zahlen NICHT verändern — es macht aus einer
+       Annahme nur eine Angabe. Sonst wäre der Knopf eine stille Datenänderung. */
+    f.schiffe.forEach(s=>{ const m2=Store.schiffFlaecheM2(s,f);
+      if(m2) s.aren=Math.round(m2/100*10)/10; });
+    Store.changed('geometrie');
+    const nachher=f.schiffe.map(s=>Math.round(Store.schiffFlaecheM2(s,f)));
+    o.unveraendert = vorher.every((v,i)=>Math.abs(v-nachher[i])<=Math.max(5, v*0.005));
+    o.herkunftNachher=Engine.flaecheFuer([f.schiffe[0].id]).quelle;
+    o.wirdMessung = o.herkunftVorher==='annahme' && o.herkunftNachher==='messung';
+
+    /* eine eingetragene Zahl schlägt die abgeleitete */
+    f.schiffe[0].aren=12.5;
+    Store.changed('geometrie');
+    o.eigeneZahlGewinnt = Math.round(Store.schiffFlaecheM2(f.schiffe[0],f))===1250;
+
+    /* zurücksetzen */
+    f.schiffe.forEach(s=>{ s.aren=null; }); Store.changed('geometrie');
+    o.zurueck = f.schiffe.every((s,i)=>Math.abs(Store.schiffFlaecheM2(s,f)-vorher[i])<=5);
+    return o;
+  });
+  t('Flächen-Übersicht und Herkunft der Fläche',
+    FL.kein || (FL.uebersichtZeilen>0 && FL.unveraendert && FL.wirdMessung
+                && FL.eigeneZahlGewinnt && FL.zurueck), FL);
+
   /* ---- Überdachte Flächen bekommen keinen Regen ---- */
   const UE=await pg.evaluate(()=>{
     const o={}, heute=D.today();

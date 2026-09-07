@@ -488,7 +488,9 @@ Object.assign(Admin, {
         gezeichneten Schiffe verteilt${FH.keine?`, ${FH.keine} Schiffe haben gar keine Fläche`:''}.
         <span class="tiny dim">Damit stimmen die Summen im Betriebsschnitt, aber jede mm- und
         m³/Are-Zahl für ein einzelnes Schiff ist nur so genau wie die Zeichnung seines Feldes.
-        Eingetragene Aren je Schiff wären die wirksamste einzelne Verbesserung an diesen Daten.</span>`;
+        Eingetragene Aren je Schiff wären die wirksamste einzelne Verbesserung an diesen Daten.</span>
+        <div style="margin-top:9px"><button class="btn sm"
+          onclick="Admin.flaechenLuecken()">Flächen nachtragen</button></div>`;
       g1.appendChild(w);
     }
     p.appendChild(g1);
