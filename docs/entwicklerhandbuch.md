@@ -335,6 +335,21 @@ So bleibt es auch nach mehrfachem Verschieben genau ein Auftrag.
 Was der Wassermann sieht, liefert `Engine.effektivMm(a)` / `effektivDauer(a)`.
 Regen wird auf den Tag gebucht, an dem er gefallen ist (im Dialog wählbar).
 
+**`Engine.regenFuerFeld(feld, standortId, datum)` ist die einzige Quelle für „Regen, der
+beim Bestand ankommt".** Auf `feld.ueberdacht` gibt sie 0 zurück. `regenAm()` liefert
+weiterhin den rohen Standortwert — er wird nur noch für die Anzeige gebraucht
+(`auftrag.regenStandortMm`, damit die Karte erklären kann, warum an einem Regentag nichts
+gekürzt wird). Wer eine neue Stelle baut, die Regen verrechnet, nimmt `regenFuerFeld`.
+Alles andere schickt den Wassermann nach einem Regentag nicht in den Tunnel.
+
+**Freigegebene Tage** (Invariante 6) werden nicht neu geplant, aber drei Dinge werden
+nachgeführt: der Regenbezug, die Anzeigefelder der Bilanz (`dringlichkeit`, `rueckstand`,
+`ueberfaellig`, `letzteBew`) und der Wegfall von Aufträgen, deren Sektoren es nicht mehr
+gibt. Umfang, Menge, Dauer und Reihenfolge bleiben unangetastet — `tools/regression.js`
+hält genau das fest. Grund: „Klärfall" ist eine Aussage über den heutigen Datenstand;
+bleibt sie stehen, nachdem der fehlende Gang nachgetragen wurde, drückt der Leiter
+denselben Knopf endlos.
+
 ### 5.5 Reihenfolge — `Engine.reihung(a, b)`
 
 Die Sortierung entscheidet, was bei knapper Kapazität heute läuft und was wartet. Sie ist
@@ -490,6 +505,16 @@ Rückfragen: Zeitspanne über Mitternacht (`ueberNacht`) und rückwärts laufend
 20. **Schwellen werden aus der Verteilung begründet**, nicht nach Gefühl gesetzt, und ihre
     Unempfindlichkeit wird mitgeprüft (`RUECKSTAND_AB`, `DECKUNG_MAX`, die Grenzen 0,5–5
     für den Durchfluss).
+21. **Regen läuft über `Engine.regenFuerFeld()`**, nie über `regenAm()` direkt. Sonst
+    bekommt ein Tunnel Regen angerechnet, den es dort nicht gibt.
+22. **Freigegebene Tage: Anzeige nachführen ja, Plan ändern nein.** Was freigegeben ist,
+    behält Umfang, Menge, Dauer und Reihenfolge. Einzige Ausnahme: ein Auftrag, dessen
+    Sektoren gelöscht wurden, fällt weg — er liesse sich nicht mehr ausführen.
+23. **Der Median der Abstände ist nicht der mittlere Abstand.** Wird ein Schiff drei Tage
+    hintereinander bewässert und danach vier Wochen nicht, ist der Median-Abstand 1 Tag.
+    Eine Regel daraus zu bauen verspricht ein Vielfaches dessen, was die Fläche bekommt.
+    Regelvorschläge gehen deshalb von der Menge **je Tag** aus (`istProTag`), nicht vom
+    Median-Abstand.
 
 ---
 

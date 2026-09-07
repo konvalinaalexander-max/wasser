@@ -179,7 +179,7 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
        die beiden Wege sich deutlich unterscheiden. */
     const S=Auswert.sollIst();
     o.sollIst=S.length;
-    o.hatBeobachtet=S.filter(x=>x.ivBeob!=null).length;
+    o.hatBeobachtet=S.filter(x=>x.vorTage!=null).length;
     o.istPlausibel=S.every(x=>x.istProTag>=0 && x.istProTag<40);
 
     const probe=S.filter(x=>x.nSchiffe>=3).sort((a,b)=>b.n-a.n)[0];
@@ -252,6 +252,46 @@ const t=(n,c,d)=>{ if(c){pass++;console.log('  ✓ '+n);} else {fail++;console.l
   t('Zeiträume liefern eine sinnvolle Staffelung',
     AW.tage30<=AW.gaenge && AW.alles>=AW.gaenge && AW.leerZustandBrauchbar,
     {t30:AW.tage30, saison:AW.gaenge, alles:AW.alles, leerOk:AW.leerZustandBrauchbar});
+
+  /* ---- Regel auf die Beobachtung setzen ---- */
+  const RB=await pg.evaluate(()=>{
+    const o={};
+    Auswert.zeitraum='alles'; Auswert._cache=null;
+    const S=Auswert.sollIst().filter(x=>x.vorTage && x.vorMm && x.nAbst>=3);
+    if(!S.length) return {kein:true};
+    const z=S[0];
+    const key=Store.regelKey(z.feld.id, z.kultur.id);
+    const alt=JSON.parse(JSON.stringify(Store.db.regeln[key]));
+    o.vorherProTag=+(alt.mm/Engine.regelIntervall(alt)).toFixed(2);
+    o.beobachtet=+z.istProTag.toFixed(2);
+    o.medianAbstand=+z.ivBeob.toFixed(1);
+
+    Admin.regelAufBeobachtet(z.feld.id, z.kultur.id, z.vorTage, z.vorMm);
+    window._frageFn();
+    const neu=Store.db.regeln[key];
+    o.nachherProTag=+(neu.mm/Engine.regelIntervall(neu)).toFixed(2);
+    /* Die neue Regel muss dem beobachteten mm/Tag nahekommen — mit der
+       Rundung auf halbe Tage und ganze mm, sonst wäre sie unbenutzbar. */
+    o.trifftBeobachtung = Math.abs(o.nachherProTag-o.beobachtet) <= Math.max(0.6, o.beobachtet*0.25);
+    o.phasenErhalten = JSON.stringify(neu.phasen||[])===JSON.stringify(alt.phasen||[]);
+    o.zeitenErhalten = JSON.stringify(neu.zeiten||[])===JSON.stringify(alt.zeiten||[]);
+
+    /* danach muss das Verhältnis Ist÷Soll nahe 1 liegen — sonst hat der
+       Knopf nicht getan, was er verspricht */
+    Auswert._cache=null;
+    const nachher=Auswert.sollIst().find(x=>x.feld.id===z.feld.id && x.kultur.id===z.kultur.id);
+    o.verhaeltnisVorher=+z.verhaeltnis.toFixed(2);
+    o.verhaeltnisNachher=nachher? +nachher.verhaeltnis.toFixed(2) : null;
+    o.naeherAnEins = nachher &&
+      Math.abs(nachher.verhaeltnis-1) < Math.abs(z.verhaeltnis-1)+0.01;
+
+    Store.db.regeln[key]=alt; Store.changed('regel');
+    Auswert.zeitraum='saison'; Auswert._cache=null;
+    return o;
+  });
+  t('beobachtete Regel lässt sich übernehmen und trifft die Praxis',
+    RB.kein || (RB.trifftBeobachtung && RB.phasenErhalten && RB.zeitenErhalten
+                && RB.naeherAnEins), RB);
 
   /* ---- Klärfall auflösen: die drei Wege müssen wirken ---- */
   const KL=await pg.evaluate(()=>{

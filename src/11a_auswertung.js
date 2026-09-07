@@ -222,16 +222,26 @@ const Auswert = {
       });
       if(!je.length) return null;
       const ist=St.median(je);
-      /* Was der Betrieb tatsächlich tut, als Regel formuliert: der übliche
-         Abstand und die übliche Menge je Gang. Ein Vorschlag zum Prüfen, keine
-         Empfehlung — der Betrieb kann aus gutem Grund knapper fahren, als
-         agronomisch ideal wäre. */
+      /* Was der Betrieb tatsächlich tut, als Regel formuliert.
+         ACHTUNG, hier steckt eine Falle: der Median der Abstände ist NICHT der
+         mittlere Abstand. Wird ein Schiff an drei Tagen hintereinander
+         bewässert und danach vier Wochen nicht, ist der Median-Abstand 1 Tag —
+         eine Regel „täglich" daraus zu bauen verspricht das Sechsfache dessen,
+         was die Fläche wirklich bekommt. Genau das tat eine frühere Fassung.
+         Massgeblich ist deshalb die tatsächliche Menge JE TAG (istProTag).
+         Die übliche Menge je Gang bleibt der operative Anker — daraus folgt
+         der Abstand, nicht umgekehrt. */
       const ivBeob=St.median(abstaende), mmBeob=St.median(mmAlle);
+      let vorTage=null, vorMm=null;
+      if(mmBeob && ist>0){
+        vorTage=Math.min(60, Math.max(0.5, Math.round(mmBeob/ist*2)/2));
+        vorMm=Math.max(1, Math.round(ist*vorTage));
+      }
       return {feld:d.feld, kultur:d.kultur, n:d.n, nSchiffe:je.length,
               deckung:d.n?d.nMenge/d.n:0, regelText:Admin.regelText(r),
               sollProTag, istProTag:ist, istSE:St.medianSE(je),
               spanne:[St.quantil(je,0.1), St.quantil(je,0.9)],
-              ivBeob, mmBeob, nAbst:abstaende.length,
+              ivBeob, mmBeob, nAbst:abstaende.length, vorTage, vorMm,
               verhaeltnis: sollProTag ? ist/sollProTag : null};
     }).filter(Boolean).filter(d=>d.n>=3 && d.verhaeltnis!=null)
       .sort((a,b)=>b.verhaeltnis-a.verhaeltnis);
@@ -545,10 +555,18 @@ Object.assign(Admin, {
         `<td style="width:18%;min-width:60px">${this.awBalken(Math.min(s.verhaeltnis,2), 2, null,
            s.verhaeltnis<0.6?'neg':(s.verhaeltnis>1.6?'warn':''))}</td>`,
         `<td class="num">${s.n}<br><span class="nn">${s.nSchiffe} Schiffe</span></td>`,
-        `<td>${(s.ivBeob && s.mmBeob && s.nAbst>=3)
-          ? `<span class="du">alle ${String(s.ivBeob.toFixed(1)).replace('.0','')} T · ${
-             s.mmBeob.toFixed(0)} mm</span><br><button class="btn sm ghost" style="margin-top:3px"
-             onclick="Admin.regelBearbeiten('${s.feld.id}','${s.kultur.id}')">Regel öffnen</button>`
+        `<td>${(s.vorTage && s.vorMm && s.nAbst>=3)
+          ? `<span class="du" title="Ergibt ${(s.vorMm/s.vorTage).toFixed(1)} mm je Tag — so viel bekommt diese Fläche tatsächlich. Der übliche Abstand zwischen zwei Gängen liegt bei ${
+             String(s.ivBeob.toFixed(1)).replace('.0','')} Tagen${
+             s.ivBeob < s.vorTage*0.7 ? '; die Fläche wird also in Schüben bewässert und dazwischen länger nicht' : ''}.">alle ${
+             String(s.vorTage.toFixed(1)).replace('.0','')} T · ${s.vorMm} mm</span><br>
+             <div class="row" style="gap:5px;margin-top:3px">
+               <button class="btn sm ${Math.abs(s.verhaeltnis-1)>0.25?'':'ghost'}"
+                 onclick="Admin.regelAufBeobachtet('${s.feld.id}','${s.kultur.id}',${s.vorTage},${s.vorMm})"
+                 >übernehmen</button>
+               <button class="btn sm ghost"
+                 onclick="Admin.regelBearbeiten('${s.feld.id}','${s.kultur.id}')">öffnen</button>
+             </div>`
           : '<span class="du">zu wenig Gänge</span>'}</td>`
       ];
       const kopf=[['Fläche · Kultur'],['Regel'],['Soll mm/T','num'],['Ist mm/T','num'],

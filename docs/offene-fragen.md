@@ -221,6 +221,30 @@ müsste Routen kennen, und dann bräuchte er eine ganz andere Eingabe.
 
 ---
 
+---
+
+## Stand: was die App inzwischen dafür bereithält
+
+Die Fragen stehen weiterhin offen — beantworten kann sie nur der Betrieb. Die App wartet
+aber nicht mehr auf sie, sondern hat für jede eine Stelle, an der die Antwort eingetragen
+wird:
+
+| Frage | Wo es jetzt erfasst wird |
+|---|---|
+| 1 · Flächen je Schiff | **Standorte → Feld → Schiffe**: Spalte „Herkunft" zeigt, was eingetragen und was abgeleitet ist; eine Kontrollzeile rechnet gegen die Feldfläche. Übersicht über alle Lücken über den Knopf **Flächen nachtragen** in der Auswertung. |
+| 2 · Überdachung | Häkchen in den Feld-Stammdaten, plus **Einstellungen → Überdachung festlegen** für alle Felder auf einmal. Der Regen-Dialog warnt, solange Felder unangeschaut sind. |
+| 3 · Regeln gegen Praxis | **Auswertung → Regel gegen Wirklichkeit**: je Zeile ein Vorschlag aus dem Journal und ein Knopf **übernehmen**. Die Rückfrage sagt ausdrücklich, dass die Änderung ein Kapazitätsproblem verdecken würde, falls die alte Regel der Anspruch war. |
+| 4 · Fehlende Schiffnummern | Im **Journal** rot markiert mit Begründung; nachgetragene Nummern holen den Gang in die Auswertung zurück. |
+| 8 · Kultur abgeräumt | Am Auftrag: **Klärfall — klären ›**, Weg 3 entfernt die Kultur. |
+| 9 · Pflanzdaten | **Kulturen & Regeln** warnt, wenn Phasen ohne Pflanzdatum wirkungslos bleiben; Sammelmaske **Pflanzdaten nachtragen**. |
+| 11 · nicht erfasste Gänge | Am Auftrag: **Klärfall — klären ›**, Weg 1 trägt den Gang nach. |
+
+Offen ohne Entsprechung in der App bleiben **5** (Sprenkler-Abstände), **6** (Rollomat),
+**7** (Wasseruhr) und **10** (was den Tagesablauf entscheidet) — die verlangen zuerst eine
+Antwort, bevor sich sinnvoll etwas bauen lässt.
+
+---
+
 ## Was wir ohne Antworten trotzdem tun können
 
 Nichts davon blockiert den Betrieb der App. Sie rechnet, plant und zeigt ihre Unsicherheit

@@ -697,6 +697,42 @@ Object.assign(Admin, {
     closeModal(); Store.changed('journal'); this.render(); toast('Nachgetragen');
   },
 
+  /* --- Regel auf das setzen, was tatsächlich läuft -------------------
+     8 von 10 auswertbaren Kombinationen bekommen unter 80 % ihrer Regelmenge,
+     im Median das 0,32-fache. Solange das so bleibt, wächst überall dauerhaft
+     ein Defizit und die Fälligkeitsliste wird nichtssagend. Der Knopf macht
+     aus der Beobachtung eine Regel — bewusst mit Rückfrage, denn es kann
+     genauso gut sein, dass dem Betrieb Kapazität fehlt. Das ist eine
+     Entscheidung des Menschen, keine der App. */
+  regelAufBeobachtet(feldId, kulturId, tage, mm){
+    const feld=Store.feld(feldId), kultur=Store.kultur(kulturId);
+    const alt=Store.regel(feldId, kulturId);
+    if(!feld||!kultur) return;
+    const t=Math.max(0.5, Math.round(tage*2)/2), m=Math.round(mm);
+    const neuText='alle '+String(t).replace('.0','')+' Tage · '+m+' mm';
+    const altProTag=alt? (alt.mm/Engine.regelIntervall(alt)) : null;
+    frage('Regel auf die Beobachtung setzen?',
+      `<b>${esc(feld.name)} · ${esc(kultur.name)}</b>
+       <table class="tb" style="margin:10px 0">
+         <tr><td>bisher</td><td><b>${esc(this.regelText(alt))}</b></td>
+             <td class="tiny dim">${altProTag!=null?altProTag.toFixed(1)+' mm/Tag':''}</td></tr>
+         <tr><td>neu</td><td><b>${esc(neuText)}</b></td>
+             <td class="tiny dim">${(m/t).toFixed(1)} mm/Tag</td></tr>
+       </table>
+       Die neue Regel beschreibt, wie diese Fläche im Journal <b>tatsächlich</b> bewässert wurde.
+       <br><br><span class="tiny dim">Das heisst nicht, dass es richtig ist. Wenn die alte Regel
+       der agronomische Anspruch war und der Betrieb ihn aus Kapazitätsgründen nicht erreicht,
+       dann verdeckt diese Änderung ein echtes Problem, statt es zu lösen — dann besser die alte
+       Regel behalten und den Rückstand sichtbar lassen.
+       Zeitfenster und Kulturphasen bleiben erhalten.</span>`,
+      'Regel übernehmen',
+      ()=>{
+        Store.setRegel(feldId, kulturId, {anzahl:1, einheit:'frei', tage:t, mm:m,
+          zeiten:(alt||{}).zeiten||[], phasen:(alt||{}).phasen||[]});
+        Store.changed('regel'); this.render(); toast('Regel übernommen');
+      });
+  },
+
   kulturEntfernen(fid,sid,kid){
     const f=Store.feld(fid), s=f.schiffe.find(x=>x.id===sid);
     const k=s.sektoren.find(x=>x.id===kid);
